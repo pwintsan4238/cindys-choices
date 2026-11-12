@@ -120,7 +120,7 @@ function defaultWh(v) {
 function syncProducts() {
   if (!S.products) S.products = JSON.parse(PRODUCTS0).map(p => ({ ...p, live: true }));
   PRODUCTS = S.products; VENDORS = S.vendors;
-  VENDORS.forEach(v => { if (!v.wh) v.wh = defaultWh(v); if (v.addr === undefined) { v.addr = ''; v.phone = v.phone || ''; v.contact = v.contact || ''; } });
+  VENDORS.forEach(v => { if (!v.cons) { const c = opts().cons; v.cons = { on: true, dep: c.dep, term: c.term, settle: c.settle, unsold: c.unsold, by: 'admin' }; } if (!v.wh) v.wh = defaultWh(v); if (v.addr === undefined) { v.addr = ''; v.phone = v.phone || ''; v.contact = v.contact || ''; } });
   PRODUCTS.forEach(p => { if (!p.wh) { const v = VENDORS.find(x => x.id === p.v); if (v) p.wh = (p.id === 'P8' && v.wh[1] ? v.wh[1] : v.wh[0]).id; } });
 }
 const vendorOf = id => VENDORS.find(v => v.id === id);
@@ -133,7 +133,7 @@ function ev(s, k, m) {
   s.events.unshift({ ts: Date.now(), k, m }); s.events.length = Math.min(s.events.length, 80);
   const g = AL_GROUP[k];   /* every supplier / buyer / logistics action raises a colour-grouped alert for Admin */
   if (g && typeof S !== 'undefined' && S && s === S && S.role !== 'ADMIN' && !(g === 'system' && !/flagged|released/.test(m))) {
-    const oid = (m.match(/O-\d+/) || [])[0], href = oid ? '#/order/' + oid : /product|live|offline/i.test(m) ? '#/a/products' : /supplier|warehouse/i.test(m) ? '#/a/vendors' : '#/a/orders';
+    const oid = (m.match(/O-\d+/) || [])[0], href = oid ? '#/order/' + oid : /product|live|offline/i.test(m) ? '#/a/products' : /supplier|warehouse|consignment/i.test(m) ? '#/a/vendors' : '#/a/orders';
     (s.alerts = s.alerts || []).unshift({ id: 'A' + Date.now() + Math.floor(Math.random() * 1e3), ts: Date.now(), group: g, title: alertTitle(g, m), msg: m, href, read: false, hot: /dispute|flagged|declined|failed/i.test(m) });
     s.alerts.length = Math.min(s.alerts.length, 120);
   }
@@ -141,7 +141,7 @@ function ev(s, k, m) {
 const AL_GROUP = { vendor: 'supplier', 'vendor-3g': 'supplier', buyer: 'buyer', 'buyer-pod': 'buyer', '3pl': 'delivery', '3pl-pod': 'delivery', ocr: 'system', escrow: 'system' };
 const AL_GRP = { supplier: ['Supplier', '#78350F', '#78350F'], buyer: ['Buyer', '#D4AF37', '#7a5b00'], delivery: ['Logistics', '#102A45', '#102A45'], system: ['System', '#0D5C4D', '#0D5C4D'] };
 function alertTitle(g, m) {
-  const T = [[/placed/i, 'New order placed'], [/dispute/i, 'Dispute opened'], [/flagged/i, 'Slip needs review'], [/released/i, 'Escrow released'], [/Added product/i, 'New product added'], [/Edited product/i, 'Product edited'], [/Deleted product/i, 'Product deleted'], [/live|offline/i, 'Product visibility changed'], [/supplier details/i, 'Supplier info updated'], [/warehouse/i, 'Warehouse updated'], [/MAWB/i, 'Cargo consolidated · MAWB created'], [/stage 12/i, 'Cargo picked up · in transit'], [/stage 13/i, 'Customs cleared'], [/stage 14|POD/i, 'Delivered · POD signed'], [/stage 11/i, 'Packed · ready for pickup'], [/stage 10/i, 'QR labels printed'], [/stage 8/i, 'Sent for quality check'], [/stage 7/i, 'Stock confirmed'], [/stage 6/i, 'Order accepted'], [/declined/i, 'Order declined'], [/consignment|pay-later|settled/i, 'Payment terms activity'], [/hold/i, 'Dispatch hold released']];
+  const T = [[/placed/i, 'New order placed'], [/dispute/i, 'Dispute opened'], [/flagged/i, 'Slip needs review'], [/released/i, 'Escrow released'], [/Added product/i, 'New product added'], [/Edited product/i, 'Product edited'], [/Deleted product/i, 'Product deleted'], [/live|offline/i, 'Product visibility changed'], [/Consignment (switched|terms)/i, 'Consignment setting changed'], [/supplier details/i, 'Supplier info updated'], [/warehouse/i, 'Warehouse updated'], [/MAWB/i, 'Cargo consolidated · MAWB created'], [/stage 12/i, 'Cargo picked up · in transit'], [/stage 13/i, 'Customs cleared'], [/stage 14|POD/i, 'Delivered · POD signed'], [/stage 11/i, 'Packed · ready for pickup'], [/stage 10/i, 'QR labels printed'], [/stage 8/i, 'Sent for quality check'], [/stage 7/i, 'Stock confirmed'], [/stage 6/i, 'Order accepted'], [/declined/i, 'Order declined'], [/consignment|pay-later|settled/i, 'Payment terms activity'], [/hold/i, 'Dispatch hold released']];
   const hit = T.find(([r]) => r.test(m)); return hit ? hit[1] : { supplier: 'Supplier update', buyer: 'Buyer activity', delivery: 'Logistics update', system: 'System alert' }[g];
 }
 function cyrb(str) { let h1 = 0xdeadbeef, h2 = 0x41c6ce57; for (let i = 0; i < str.length; i++) { const c = str.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); } h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909); h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909); return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16).padStart(14, '0'); }
@@ -311,12 +311,22 @@ V.cart = () => {
 const consOpt = (k, arr, cur) => `<div class="pills">${arr.map(([v, l]) => `<button class="${String(cur) === String(v) ? 'on' : ''}" data-act="cons" data-k="${k}" data-v="${v}">${l}</button>`).join('')}</div>`;
 const consDraft = () => S.cons || (S.cons = { on: false, dep: 25, term: 60, settle: 'sold', unsold: 'return' });
 const payAmt = cur => { const d = S.cons; if (d && d.later) return 0; return d && d.on ? toCur(consTerms(S.cart, cur, d).depMMK, cur) : calc(S.cart, cur).total; };
+/* Consignment is configured per supplier (vendor.cons): the supplier switches it on/off and sets terms; Admin can add/override. */
+const cartVendors = () => [...new Set(S.cart.map(i => prod(i.p) && prod(i.p).v))].map(vendorOf).filter(Boolean);
+const consOK = () => opts().cons.on && S.cart.length > 0 && cartVendors().every(v => v.cons && v.cons.on);
+const consOffNames = () => cartVendors().filter(v => !(v.cons && v.cons.on)).map(v => v.n);
+function consCombined() {
+  const vs = cartVendors().filter(v => v.cons && v.cons.on); if (!vs.length) return null;
+  const sr = ['sold', 'monthly', 'end'], un = [...new Set(vs.map(v => v.cons.unsold))];
+  return { dep: Math.max(...vs.map(v => v.cons.dep)), term: Math.min(...vs.map(v => v.cons.term)), settle: sr[Math.min(...vs.map(v => sr.indexOf(v.cons.settle)))], unsold: un.length === 1 ? un[0] : 'return', names: vs.map(v => v.n) };
+}
 function consPanel(d) {
-  const O = opts(), pm = d.on ? 'cons' : d.later ? 'later' : 'prepaid';
+  const O = opts(), pm = d.on ? 'cons' : d.later ? 'later' : 'prepaid', cc = consCombined(), off = consOffNames();
   const pms = [['prepaid', 'Standard · prepaid'], ...(O.cons.on ? [['cons', 'Consignment']] : []), ...(O.later.on ? [['later', 'Pay later']] : [])];
-  return `<div class="card"><h3>Payment</h3><div class="seg" role="tablist" style="margin:8px 0">${pms.map(([k, n]) => `<button class="${pm === k ? 'on' : ''}" data-act="cons" data-k="pm" data-v="${k}">${n}</button>`).join('')}</div>
-  ${d.on ? `<h3 style="margin-top:14px">Consignment terms</h3><p class="small muted">Take the goods now and pay as they sell. These terms are set in advance by the platform and can't be changed here.</p>
-  <ul class="bd" style="margin-top:6px"><li><span>Upfront deposit</span><b class="num">${O.cons.dep ? O.cons.dep + '%' : 'None'}</b></li><li><span>Consignment term</span><b>${O.cons.term} days</b></li><li><span>Settlement</span><b>${CONS_L.settle[O.cons.settle]}</b></li><li><span>Unsold goods</span><b>${CONS_L.unsold[O.cons.unsold]}</b></li><li><span>Consignment fee</span><b class="num">${consFee(O.cons.dep)}%</b></li></ul>`
+  return `<div class="card"><h3>Payment</h3><div class="seg" role="tablist" style="margin:8px 0">${pms.map(([k, n]) => `<button class="${pm === k ? 'on' : ''}" data-act="cons" data-k="pm" data-v="${k}" ${k === 'cons' && !consOK() ? 'disabled' : ''}>${n}</button>`).join('')}</div>
+  ${O.cons.on && off.length ? `<p class="small muted">Consignment isn't offered by: ${off.map(esc).join(', ')}. Remove those items to use it.</p>` : ''}
+  ${d.on && cc ? `<h3 style="margin-top:14px">Consignment terms</h3><p class="small muted">Take the goods now and pay as they sell. Terms are set by ${cc.names.map(esc).join(' &amp; ')}${cc.names.length > 1 ? ' (combined)' : ''} and can't be changed here.</p>
+  <ul class="bd" style="margin-top:6px"><li><span>Upfront deposit</span><b class="num">${cc.dep ? cc.dep + '%' : 'None'}</b></li><li><span>Consignment term</span><b>${cc.term} days</b></li><li><span>Settlement</span><b>${CONS_L.settle[cc.settle]}</b></li><li><span>Unsold goods</span><b>${CONS_L.unsold[cc.unsold]}</b></li><li><span>Consignment fee</span><b class="num">${consFee(cc.dep)}%</b></li></ul>`
     : d.later ? `<h3 style="margin-top:14px">Pay later terms</h3><p class="small muted">Nothing to pay now. Settle after you sign for delivery.</p>
   <label class="f">Pay within</label>${consOpt('later', O.later.days.map(x => [x, x + ' days after delivery · +' + (O.later.fee[x] ?? 3) + '%']), d.later)}`
     : '<p class="small muted">Full payment into escrow now. Prefer to pay as you sell, or after delivery? Choose Consignment or Pay later.</p>'}
@@ -324,10 +334,10 @@ function consPanel(d) {
 }
 function sanitizeDraft(d) {
   const O = opts();
-  if (d.on && (!O.cons.on)) d.on = false;
+  if (d.on && (!O.cons.on || !consOK())) d.on = false;
   if (d.later && !O.later.on) d.later = 0;
   if (d.defer && !O.defer.on) d.defer = 0;
-  if (d.on) Object.assign(d, { dep: O.cons.dep, term: O.cons.term, settle: O.cons.settle, unsold: O.cons.unsold });   /* terms are admin-set, never buyer-chosen */
+  if (d.on) { const c = consCombined(); Object.assign(d, { dep: c.dep, term: c.term, settle: c.settle, unsold: c.unsold }); }   /* terms come from the supplier / admin, never the buyer */
   if (d.later && !O.later.days.includes(d.later)) d.later = O.later.days[0];
   if (d.defer && !O.defer.days.includes(d.defer)) d.defer = O.defer.days[0];
 }
@@ -586,7 +596,7 @@ V.aoptions = () => {
   const fee = (g, arr) => `<div class="row wrap" style="gap:10px">${arr.map(v => `<label class="small" style="display:flex;align-items:center;gap:6px">${g === 'cons' ? v + '% deposit' : v + ' days'} →<input class="ofee" type="number" step="0.1" min="0" max="30" value="${O[g].fee[v] ?? 4}" data-g="${g}" data-d="${v}" style="width:68px;padding:6px;border:1px solid #cbd5e1;border-radius:8px"> %</label>`).join('')}</div>`;
   const head = (k, t, d, used) => `<div class="row wrap"><div><h3>${t}</h3><div class="small muted">${d}</div></div><span class="sp"></span><span class="chip gray">${used} order${used === 1 ? '' : 's'}</span>${sw(k, O[k].on, 'Enable ' + t)}</div>`;
   return `<a href="#/a/overview" class="small">← Overview</a><div class="title-row"><h1>Order options</h1><span class="sp"></span><button class="btn sec sm" data-act="opt-reset">Reset to defaults</button></div><p class="muted">Control which flexible terms buyers can choose at checkout. Changes apply to new orders immediately; existing orders keep the terms they were placed with.</p>
-  <div class="card">${head('cons', 'Consignment', 'Buyer takes the goods, pays as they sell. Platform advances the vendor.', n('cons'))}${O.cons.on ? `<p class="small muted" style="margin-top:8px">Buyers cannot change these. Every new consignment order uses the terms below.</p>${one('dep', 'Upfront deposit', [[0, 'None'], [10, '10%'], [25, '25%'], [50, '50%']])}${one('term', 'Consignment term', [30, 60, 90, 120].map(x => [x, x + ' days']))}${one('settle', 'Settlement', Object.entries(CONS_L.settle))}${one('unsold', 'Unsold goods at term end', Object.entries(CONS_L.unsold))}<label class="f">Max term extensions (30 days each)</label><div class="pills">${[0, 1, 2, 3].map(v => `<button class="${O.cons.extMax === v ? 'on' : ''}" data-act="opt-ext" data-v="${v}">${v}</button>`).join('')}</div><label class="f">Consignment fee by deposit level</label>${fee('cons', [0, 10, 25, 50])}` : ''}</div>
+  <div class="card">${head('cons', 'Consignment', 'Buyer takes the goods, pays as they sell. Platform advances the vendor.', n('cons'))}${O.cons.on ? `<p class="small muted" style="margin-top:8px">Each supplier sets their own consignment terms (or switches it off). Buyers cannot change them. Where a supplier leaves it off, Admin can switch it on and set the terms on their behalf.</p><ul class="bd">${S.vendors.map(v => `<li><span>${esc(v.n)}<small>${v.cons.on ? (v.cons.dep ? v.cons.dep + '% deposit' : 'No deposit') + ' · ' + v.cons.term + ' days · ' + CONS_L.settle[v.cons.settle] + ' · set by ' + (v.cons.by === 'admin' ? 'Admin' : 'supplier') : 'Off · set by ' + (v.cons.by === 'admin' ? 'Admin' : 'supplier')}</small></span><span class="chip ${v.cons.on ? '' : 'gray'}">${v.cons.on ? 'On' : 'Off'}</span> <a class="btn sec sm" href="#/a/supplier/${v.id}">Edit terms</a></li>`).join('')}</ul><label class="f">Max term extensions (30 days each)</label><div class="pills">${[0, 1, 2, 3].map(v => `<button class="${O.cons.extMax === v ? 'on' : ''}" data-act="opt-ext" data-v="${v}">${v}</button>`).join('')}</div><label class="f">Consignment fee by deposit level</label>${fee('cons', [0, 10, 25, 50])}` : ''}</div>
   <div class="card">${head('later', 'Pay later', 'No payment at checkout; buyer pays within the chosen days after delivery.', n('later'))}${O.later.on ? `<label class="f">Payment windows</label>${chips('later', 'days', [15, 30, 45, 60], O.later.days, v => v + ' days')}<label class="f">Fee by window</label>${fee('later', O.later.days)}` : ''}</div>
   <div class="card">${head('defer', 'Deliver later', 'Goods are packed and held at the hub, dispatched on a date the buyer picks.', n('defer'))}${O.defer.on ? `<label class="f">Dispatch delay choices</label>${chips('defer', 'days', [7, 14, 30, 60, 90], O.defer.days, v => v + ' days')}` : ''}</div>
   <button class="btn" data-act="opt-fee">Save fees</button>
@@ -697,9 +707,17 @@ V.profile = (vid, admin) => {
   ${admin ? `<div class="card"><span class="chip warn">Editing on behalf of ${esc(v.n)}</span><p class="small muted" style="margin-top:6px">Changes are logged as made by Admin.</p></div>` : ''}
   <div class="card"><div class="row wrap"><h3>Supplier details</h3><span class="sp"></span><button class="btn sec sm" data-act="v-edit" data-id="${v.id}">Edit details</button></div>
   <ul class="bd">${row('Business name', v.n)}${row('Contact person', v.contact)}${row('Phone', v.phone)}${row('City / region', v.city)}${row('Business address', v.addr)}${row('KYC', v.kyc + (v.tier !== '—' ? ' · ' + v.tier : ''))}</ul></div>
+  ${consSetup(v, admin)}
   <div class="title-row"><h3>Warehouses (${v.wh.length})</h3><span class="sp"></span><button class="btn" data-act="w-edit" data-id="${v.id}" data-w="">+ Add warehouse</button></div>
   <div class="grid g2">${v.wh.map(whCard).join('')}</div>`;
 };
+function consSetup(v, admin) {
+  const cs = v.cons, O = opts(), sel = (k, l, arr) => `<label class="f">${l}</label><div class="pills">${arr.map(([x, n]) => `<button class="${String(cs[k]) === String(x) ? 'on' : ''}" data-act="vc-set" data-id="${v.id}" data-k="${k}" data-v="${x}">${n}</button>`).join('')}</div>`;
+  return `<div class="card"><div class="row wrap"><div><h3>Consignment</h3><div class="small muted">Let buyers take your goods now and pay as they sell.</div></div><span class="sp"></span><span class="chip ${cs.by === 'admin' ? 'warn' : 'gray'}">Set by ${cs.by === 'admin' ? 'Admin' : 'Supplier'}</span><button class="switch ${cs.on ? 'on' : ''}" data-act="vc-on" data-id="${v.id}" role="switch" aria-checked="${cs.on}" aria-label="Offer consignment"></button></div>
+  ${!O.cons.on ? '<p class="small muted" style="margin-top:8px">Consignment is currently switched off platform-wide by Admin, so buyers will not see it yet.</p>' : ''}
+  ${cs.on ? `${sel('dep', 'Upfront deposit', [[0, 'None'], [10, '10%'], [25, '25%'], [50, '50%']])}${sel('term', 'Consignment term', [30, 60, 90, 120].map(x => [x, x + ' days']))}${sel('settle', 'Settlement', Object.entries(CONS_L.settle))}${sel('unsold', 'Unsold goods at term end', Object.entries(CONS_L.unsold))}<p class="small muted" style="margin-top:8px">Platform consignment fee at ${cs.dep ? cs.dep + '%' : 'no'} deposit: ${consFee(cs.dep)}% (set by Admin). Buyers cannot change these terms.</p>`
+    : `<p class="small muted" style="margin-top:8px">Off — buyers can't take your goods on consignment. ${admin ? 'You can switch it on and set the terms on this supplier’s behalf.' : 'If you prefer not to set terms yourself, the platform admin can add the consignment part for you.'}</p>`}</div>`;
+}
 V.sprofile = () => V.profile(MYV, false);
 const ffld = (k, l, val, type = 'text', extra = '') => `<label class="f" for="vf-${k}">${l}</label><input class="inp" id="vf-${k}" type="${type}" value="${esc(val ?? '')}" ${extra}>`;
 function vendorForm(vid) {
@@ -762,7 +780,7 @@ const MM = {
   'All batches': 'အားလုံး', 'All': 'အားလုံး', 'Textiles': 'ပိုးထည်အထည်', 'Lacquerware': 'ယွန်းထည်', 'Tea & Coffee': 'လက်ဖက်နှင့် ကော်ဖီ', 'Gems & Jewelry': 'ကျောက်မျက်နှင့် လက်ဝတ်ရတနာ', 'Wellness': 'ကျန်းမာရေး',
   'Consignment': 'အပ်နှံရောင်းချမှု', 'Consignment terms': 'အပ်နှံစည်းမျဉ်းများ', 'Order type': 'မှာယူမှုပုံစံ', 'Report sales': 'ရောင်းရမှု ပို့ရန်', 'Settle now': 'ယခု ပေးချေမည်', 'Extend +30 days': 'ရက် ၃၀ တိုးမည်', 'Buy out remainder': 'ကျန်ပစ္စည်း ဝယ်မည်', 'Return unsold': 'မရောင်းရသည် ပြန်ပို့', 'Send settlement reminder': 'ပေးချေရန် သတိပေးမည်', 'Report & settle': 'ပို့၍ ပေးချေမည်',
   'Order options': 'မှာယူမှု ရွေးချယ်စရာများ', 'Pay later': 'နောက်မှ ပေးချေမည်', 'Deliver later': 'နောက်မှ ပို့ဆောင်မည်', 'Payment': 'ငွေပေးချေမှု', 'Delivery': 'ပို့ဆောင်မှု', 'Flexible terms': 'ပြောင်းလွယ်စည်းမျဉ်း', 'Pay later terms': 'နောက်မှပေးချေမှု စည်းမျဉ်း', 'Pay now': 'ယခု ပေးမည်', 'Release hold now': 'ယခု ထုတ်ပို့ရန် ဖွင့်မည်', 'Save fees': 'ကြေးများ သိမ်းမည်', 'Reset to defaults': 'မူလအတိုင်း ပြန်ထားမည်',
-  'Send for quality check': 'အရည်အသွေးစစ်ရန် ပို့မည်', 'Pass quality check': 'အရည်အသွေး အောင်မြင်', 'Quality check queue': 'အရည်အသွေးစစ်ဆေးရန် စာရင်း', 'Pass': 'အောင်', 'Fail': 'ကျ', 'Business & warehouses': 'လုပ်ငန်းနှင့် ကုန်လှောင်ရုံများ', 'Warehouses': 'ကုန်လှောင်ရုံများ', 'Supplier details': 'ကုန်သည် အချက်အလက်', 'Edit details': 'အချက်အလက် ပြင်မည်', '+ Add warehouse': '+ ကုန်လှောင်ရုံ ထည့်ရန်', 'Add warehouse': 'ကုန်လှောင်ရုံ ထည့်ရန်', 'Edit warehouse': 'ကုန်လှောင်ရုံ ပြင်ရန်', 'Save details': 'အချက်အလက် သိမ်းမည်', 'Save warehouse': 'ကုန်လှောင်ရုံ သိမ်းမည်', 'Delete warehouse?': 'ကုန်လှောင်ရုံ ဖျက်မလား?', 'Profile & warehouses': 'ပရိုဖိုင်နှင့် ကုန်လှောင်ရုံ', 'Manage products': 'ကုန်ပစ္စည်း စီမံရန်', 'Alerts': 'သတိပေးချက်များ', 'Latest alerts': 'နောက်ဆုံး သတိပေးချက်များ', 'Mark all read': 'အားလုံး ဖတ်ပြီးပြု', 'Clear read': 'ဖတ်ပြီးသည်များ ဖယ်ရန်', 'View all →': 'အားလုံးကြည့်ရန် →', 'Next →': 'ရှေ့ဆက်မည် →', 'Next': 'ရှေ့ဆက်မည်', '+ Add product': '+ ကုန်ပစ္စည်း ထည့်ရန်', 'Add product': 'ကုန်ပစ္စည်း ထည့်ရန်', 'Edit product': 'ကုန်ပစ္စည်း ပြင်ရန်', 'Edit': 'ပြင်မည်', 'Delete': 'ဖျက်မည်', 'Save changes': 'ပြောင်းလဲမှု သိမ်းမည်', 'Delete product?': 'ကုန်ပစ္စည်း ဖျက်မလား?', 'Remove photo': 'ဓာတ်ပုံ ဖယ်ရှားမည်', 'Products': 'ကုန်ပစ္စည်းများ', 'Pickup preparation':'ပစ္စည်းလာယူရန် ပြင်ဆင်မှု', 'Cargo moving': 'ကုန်စည် သွားနေ', 'Needs attention': 'စစ်ဆေးရန်လို',
+  'Send for quality check': 'အရည်အသွေးစစ်ရန် ပို့မည်', 'Pass quality check': 'အရည်အသွေး အောင်မြင်', 'Quality check queue': 'အရည်အသွေးစစ်ဆေးရန် စာရင်း', 'Pass': 'အောင်', 'Fail': 'ကျ', 'Business & warehouses': 'လုပ်ငန်းနှင့် ကုန်လှောင်ရုံများ', 'Warehouses': 'ကုန်လှောင်ရုံများ', 'Supplier details': 'ကုန်သည် အချက်အလက်', 'Edit details': 'အချက်အလက် ပြင်မည်', '+ Add warehouse': '+ ကုန်လှောင်ရုံ ထည့်ရန်', 'Add warehouse': 'ကုန်လှောင်ရုံ ထည့်ရန်', 'Edit warehouse': 'ကုန်လှောင်ရုံ ပြင်ရန်', 'Save details': 'အချက်အလက် သိမ်းမည်', 'Save warehouse': 'ကုန်လှောင်ရုံ သိမ်းမည်', 'Delete warehouse?': 'ကုန်လှောင်ရုံ ဖျက်မလား?', 'Profile & warehouses': 'ပရိုဖိုင်နှင့် ကုန်လှောင်ရုံ', 'Manage products': 'ကုန်ပစ္စည်း စီမံရန်', 'Alerts': 'သတိပေးချက်များ', 'Edit terms': 'စည်းမျဉ်း ပြင်ရန်', 'Consignment': 'အပ်နှံရောင်းချမှု', 'Latest alerts': 'နောက်ဆုံး သတိပေးချက်များ', 'Mark all read': 'အားလုံး ဖတ်ပြီးပြု', 'Clear read': 'ဖတ်ပြီးသည်များ ဖယ်ရန်', 'View all →': 'အားလုံးကြည့်ရန် →', 'Next →': 'ရှေ့ဆက်မည် →', 'Next': 'ရှေ့ဆက်မည်', '+ Add product': '+ ကုန်ပစ္စည်း ထည့်ရန်', 'Add product': 'ကုန်ပစ္စည်း ထည့်ရန်', 'Edit product': 'ကုန်ပစ္စည်း ပြင်ရန်', 'Edit': 'ပြင်မည်', 'Delete': 'ဖျက်မည်', 'Save changes': 'ပြောင်းလဲမှု သိမ်းမည်', 'Delete product?': 'ကုန်ပစ္စည်း ဖျက်မလား?', 'Remove photo': 'ဓာတ်ပုံ ဖယ်ရှားမည်', 'Products': 'ကုန်ပစ္စည်းများ', 'Pickup preparation':'ပစ္စည်းလာယူရန် ပြင်ဆင်မှု', 'Cargo moving': 'ကုန်စည် သွားနေ', 'Needs attention': 'စစ်ဆေးရန်လို',
   'Home': 'ပင်မ', 'Catalog': 'ကတ်တလောက်', 'Orders': 'အော်ဒါများ', 'Cargo': 'ကုန်စည်', 'Account': 'အကောင့်', 'Stock': 'စတော့', 'Payouts': 'ငွေထုတ်', 'Manifest': 'မန်နီဖက်စ်', 'POD': 'POD', 'Overview': 'အနှစ်ချုပ်', 'FX Engine': 'FX', 'Vendors': 'ကုန်သည်များ', 'Escrow': 'အာမခံငွေ', 'Test Lab': 'စမ်းသပ်ခန်း',
   /* section titles */
   'Landed cost': 'ရောက်ရှိကုန်ကျစရိတ်', 'Items': 'ကုန်ပစ္စည်းများ', 'Payment slip': 'ငွေပေးချေ ဘောင်ချာ', 'Order journey · 14 stages': 'အော်ဒါ ခရီးစဉ် · အဆင့် ၁၄', 'Weight intake & consolidation': 'အလေးချိန် မှတ်သားခြင်းနှင့် ပေါင်းစည်းခြင်း',
@@ -857,6 +875,8 @@ document.addEventListener('click', e => {
     case 'al-all': (S.alerts || []).forEach(a => { a.read = true; }); save(); rerender(); break;
     case 'al-clear': S.alerts = (S.alerts || []).filter(a => !a.read); save(); rerender(); break;
     case 'al-flt': ALF = v; rerender(); break;
+    case 'vc-on': { const vd = vendorOf(id), cs = vd.cons; cs.on = !cs.on; cs.by = S.role === 'ADMIN' ? 'admin' : 'supplier'; editLog(`Consignment switched ${cs.on ? 'ON' : 'OFF'} · ${vd.n}`); save(); toast(cs.on ? 'Consignment on' : 'Consignment off'); rerender(); break; }
+    case 'vc-set': { const vd = vendorOf(id), k = el.dataset.k; vd.cons[k] = (k === 'dep' || k === 'term') ? +v : v; vd.cons.by = S.role === 'ADMIN' ? 'admin' : 'supplier'; editLog(`Consignment terms updated · ${vd.n} (${k}: ${v})`); save(); rerender(); break; }
     case 'v-edit': vendorForm(id); break;
     case 'v-save': saveVendor(id); break;
     case 'w-edit': whForm(id, el.dataset.w); break;
