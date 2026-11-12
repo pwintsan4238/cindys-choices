@@ -37,6 +37,7 @@ const ICONS = {
   lock: 'M6 11h12v10H6zM8 11V7a4 4 0 018 0v4', shield: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3zM9 12l2 2 4-4', check: 'M5 12l5 5 9-10', x: 'M6 6l12 12M18 6L6 18',
   clock: 'M12 7v5l3 2M12 21a9 9 0 100-18 9 9 0 000 18z', upload: 'M12 16V4M7 9l5-5 5 5M4 20h16', spark: 'M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2 2-6z', pin: 'M12 21s7-6 7-12a7 7 0 10-14 0c0 6 7 12 7 12zM12 11a2 2 0 100-.01', out: 'M9 4H5v16h4M16 8l4 4-4 4M20 12H9', wifi: 'M2 9a15 15 0 0120 0M5 12.5a10 10 0 0114 0M8.5 16a5 5 0 017 0M12 19.5h.01', qr: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h3v3h-3zM20 14v6h-3'
 };
+ICONS.bell = 'M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9M10 21a2 2 0 004 0';
 const ic = (n, c = '') => `<svg class="ic ${c}" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[n] || ''}"/></svg>`;
 
 /* ---------- seed data ---------- */
@@ -65,8 +66,8 @@ const SEED_FX = { rates: { USD: 1, THB: 35.8, TWD: 32.1, MMK: 7730 }, spread: 2.
 const CONS_FEE = { 0: 6, 10: 5, 25: 3.5, 50: 2 };   /* % fee: the lower the deposit, the higher the fee */
 const CONS_L = { settle: { sold: 'Pay as sold', monthly: 'Monthly', end: 'At term end' }, unsold: { return: 'Return unsold', extend: 'Extend term', buyout: 'Buy out −10%' } };
 /* Admin-controlled order options (S.opts) */
-const OPT_DEF = { cons: { on: true, deps: [0, 10, 25, 50], terms: [30, 60, 90], extMax: 2, fee: { ...CONS_FEE } }, later: { on: true, days: [15, 30, 45], fee: { 15: 1.5, 30: 3, 45: 4.5, 60: 6 } }, defer: { on: true, days: [14, 30, 60] } };
-const opts = () => { if (!S.opts) S.opts = JSON.parse(JSON.stringify(OPT_DEF)); return S.opts; };
+const OPT_DEF = { cons: { on: true, dep: 25, term: 60, settle: 'sold', unsold: 'return', extMax: 2, fee: { ...CONS_FEE } }, later: { on: true, days: [15, 30, 45], fee: { 15: 1.5, 30: 3, 45: 4.5, 60: 6 } }, defer: { on: true, days: [14, 30, 60] } };
+const opts = () => { if (!S.opts) S.opts = JSON.parse(JSON.stringify(OPT_DEF)); const c = S.opts.cons; if (c.dep === undefined) Object.assign(c, { dep: 25, term: 60, settle: 'sold', unsold: 'return' }); return S.opts; };
 const consFee = dep => ((typeof S !== 'undefined' && S && S.opts ? S.opts.cons.fee : CONS_FEE)[dep]) ?? 4;
 const held = o => !!(o.defer && !o.defer.released && o.defer.until > Date.now());
 function laterTerms(items, cur, days) { const c = calc(items, cur), feePct = opts().later.fee[days] ?? 3, feeMMK = c.totalMMK * feePct / 100; return { c, feePct, feeMMK, grossMMK: c.totalMMK + feeMMK }; }
@@ -128,7 +129,21 @@ const whLabel = p => { const w = whOf(p); return w ? `${w.name} · ${w.city}` : 
 const vname = () => (vendorOf(MYV) || { n: 'your business' }).n;
 function load() { try { S = JSON.parse(localStorage.getItem('cc_state')); } catch (e) { } if (!S || S.v !== 1) S = seed(); syncProducts(); }
 function save() { try { localStorage.setItem('cc_state', JSON.stringify(S)); } catch (e) { } idbPut(); }
-function ev(s, k, m) { s.events.unshift({ ts: Date.now(), k, m }); s.events.length = Math.min(s.events.length, 80); }
+function ev(s, k, m) {
+  s.events.unshift({ ts: Date.now(), k, m }); s.events.length = Math.min(s.events.length, 80);
+  const g = AL_GROUP[k];   /* every supplier / buyer / logistics action raises a colour-grouped alert for Admin */
+  if (g && typeof S !== 'undefined' && S && s === S && S.role !== 'ADMIN' && !(g === 'system' && !/flagged|released/.test(m))) {
+    const oid = (m.match(/O-\d+/) || [])[0], href = oid ? '#/order/' + oid : /product|live|offline/i.test(m) ? '#/a/products' : /supplier|warehouse/i.test(m) ? '#/a/vendors' : '#/a/orders';
+    (s.alerts = s.alerts || []).unshift({ id: 'A' + Date.now() + Math.floor(Math.random() * 1e3), ts: Date.now(), group: g, title: alertTitle(g, m), msg: m, href, read: false, hot: /dispute|flagged|declined|failed/i.test(m) });
+    s.alerts.length = Math.min(s.alerts.length, 120);
+  }
+}
+const AL_GROUP = { vendor: 'supplier', 'vendor-3g': 'supplier', buyer: 'buyer', 'buyer-pod': 'buyer', '3pl': 'delivery', '3pl-pod': 'delivery', ocr: 'system', escrow: 'system' };
+const AL_GRP = { supplier: ['Supplier', '#78350F', '#78350F'], buyer: ['Buyer', '#D4AF37', '#7a5b00'], delivery: ['Logistics', '#102A45', '#102A45'], system: ['System', '#0D5C4D', '#0D5C4D'] };
+function alertTitle(g, m) {
+  const T = [[/placed/i, 'New order placed'], [/dispute/i, 'Dispute opened'], [/flagged/i, 'Slip needs review'], [/released/i, 'Escrow released'], [/Added product/i, 'New product added'], [/Edited product/i, 'Product edited'], [/Deleted product/i, 'Product deleted'], [/live|offline/i, 'Product visibility changed'], [/supplier details/i, 'Supplier info updated'], [/warehouse/i, 'Warehouse updated'], [/MAWB/i, 'Cargo consolidated · MAWB created'], [/stage 12/i, 'Cargo picked up · in transit'], [/stage 13/i, 'Customs cleared'], [/stage 14|POD/i, 'Delivered · POD signed'], [/stage 11/i, 'Packed · ready for pickup'], [/stage 10/i, 'QR labels printed'], [/stage 8/i, 'Sent for quality check'], [/stage 7/i, 'Stock confirmed'], [/stage 6/i, 'Order accepted'], [/declined/i, 'Order declined'], [/consignment|pay-later|settled/i, 'Payment terms activity'], [/hold/i, 'Dispatch hold released']];
+  const hit = T.find(([r]) => r.test(m)); return hit ? hit[1] : { supplier: 'Supplier update', buyer: 'Buyer activity', delivery: 'Logistics update', system: 'System alert' }[g];
+}
 function cyrb(str) { let h1 = 0xdeadbeef, h2 = 0x41c6ce57; for (let i = 0; i < str.length; i++) { const c = str.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); } h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909); h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909); return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16).padStart(14, '0'); }
 function postLedger(s, o, dr, cr, mmk, memo, ts) {
   const prev = s.ledger.length ? s.ledger[0].hash : 'genesis';
@@ -300,11 +315,8 @@ function consPanel(d) {
   const O = opts(), pm = d.on ? 'cons' : d.later ? 'later' : 'prepaid';
   const pms = [['prepaid', 'Standard · prepaid'], ...(O.cons.on ? [['cons', 'Consignment']] : []), ...(O.later.on ? [['later', 'Pay later']] : [])];
   return `<div class="card"><h3>Payment</h3><div class="seg" role="tablist" style="margin:8px 0">${pms.map(([k, n]) => `<button class="${pm === k ? 'on' : ''}" data-act="cons" data-k="pm" data-v="${k}">${n}</button>`).join('')}</div>
-  ${d.on ? `<h3 style="margin-top:14px">Consignment terms</h3><p class="small muted">Take the goods now and pay as they sell. A lower deposit means a higher fee.</p>
-  <label class="f">Upfront deposit</label>${consOpt('dep', O.cons.deps.map(x => [x, x ? x + '%' : '0% · none']), d.dep)}
-  <label class="f">Consignment term</label>${consOpt('term', O.cons.terms.map(x => [x, x + ' days']), d.term)}
-  <label class="f">Settlement</label>${consOpt('settle', Object.entries(CONS_L.settle), d.settle)}
-  <label class="f">Unsold goods at term end</label>${consOpt('unsold', Object.entries(CONS_L.unsold), d.unsold)}`
+  ${d.on ? `<h3 style="margin-top:14px">Consignment terms</h3><p class="small muted">Take the goods now and pay as they sell. These terms are set in advance by the platform and can't be changed here.</p>
+  <ul class="bd" style="margin-top:6px"><li><span>Upfront deposit</span><b class="num">${O.cons.dep ? O.cons.dep + '%' : 'None'}</b></li><li><span>Consignment term</span><b>${O.cons.term} days</b></li><li><span>Settlement</span><b>${CONS_L.settle[O.cons.settle]}</b></li><li><span>Unsold goods</span><b>${CONS_L.unsold[O.cons.unsold]}</b></li><li><span>Consignment fee</span><b class="num">${consFee(O.cons.dep)}%</b></li></ul>`
     : d.later ? `<h3 style="margin-top:14px">Pay later terms</h3><p class="small muted">Nothing to pay now. Settle after you sign for delivery.</p>
   <label class="f">Pay within</label>${consOpt('later', O.later.days.map(x => [x, x + ' days after delivery · +' + (O.later.fee[x] ?? 3) + '%']), d.later)}`
     : '<p class="small muted">Full payment into escrow now. Prefer to pay as you sell, or after delivery? Choose Consignment or Pay later.</p>'}
@@ -315,7 +327,7 @@ function sanitizeDraft(d) {
   if (d.on && (!O.cons.on)) d.on = false;
   if (d.later && !O.later.on) d.later = 0;
   if (d.defer && !O.defer.on) d.defer = 0;
-  if (d.on) { if (!O.cons.deps.includes(d.dep)) d.dep = O.cons.deps[0]; if (!O.cons.terms.includes(d.term)) d.term = O.cons.terms[0]; }
+  if (d.on) Object.assign(d, { dep: O.cons.dep, term: O.cons.term, settle: O.cons.settle, unsold: O.cons.unsold });   /* terms are admin-set, never buyer-chosen */
   if (d.later && !O.later.days.includes(d.later)) d.later = O.later.days[0];
   if (d.defer && !O.defer.days.includes(d.defer)) d.defer = O.defer.days[0];
 }
@@ -335,7 +347,7 @@ function runOcr(name, size, good) {
 function placeOrder() {
   const p = S.pay, cur = S.cur, o = { id: 'O-' + S.nextOrder++, ts: Date.now(), buyer: ROLES.BUYER.user.split(' · ')[0], cur, rail: CUR[cur].rail, items: S.cart.map(x => ({ ...x })), stage: 2, status: 'ok', slip: { ref: p.ocr.ref, conf: p.ocr.conf, ts: p.ocr.ts, ok: p.ocr.conf >= 92 }, rel: { dep: false, bal: false }, ms: [] };
   o.calc = calc(o.items, cur); o.ms.push({ s: 1, ts: o.ts }, { s: 2, ts: o.ts });
-  const d = S.cons;
+  const d = S.cons; if (d) sanitizeDraft(d);
   if (d && d.on) { const t = consTerms(o.items, cur, d); o.cons = { dep: d.dep, term: d.term, settle: d.settle, unsold: d.unsold, feePct: t.feePct, grossMMK: Math.round(t.grossMMK), depMMK: t.depMMK, sold: {}, paid: 0, disc: 0, ext: 0, start: null, due: null, closed: false }; d.on = false; }
   if (d && d.later) { const t = laterTerms(o.items, cur, d.later); o.later = { days: d.later, feePct: t.feePct, grossMMK: Math.round(t.grossMMK), depMMK: 0, due: null, paid: false }; d.later = 0; }
   if (d && d.defer) { o.defer = { days: d.defer, until: Date.now() + d.defer * 24 * H, released: false }; d.defer = 0; }
@@ -488,7 +500,7 @@ V.aoverview = () => {
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))"><div class="card"><h3>Review queue</h3>${S.review.map(id => { const o = ord(id); return `<div class="row wrap" style="padding:10px 0;border-bottom:1px solid #F1F5F9"><div><b class="mono">${o.id}</b><div class="small muted">Slip ${o.slip.ref} · OCR ${o.slip.conf.toFixed(1)}% · ${fmt(o.cur, o.calc.total)}</div></div><span class="sp"></span><button class="btn sm" data-act="a-verify" data-id="${o.id}">Verify</button><button class="btn bad sm" data-act="a-reject" data-id="${o.id}">Reject</button></div>`; }).join('') || '<p class="muted small">No slips waiting. OCR auto-verified everything ≥ 92%.</p>'}
   <h3 style="margin-top:18px">Quality check queue</h3>${S.orders.filter(o => o.stage === 8 && o.status === 'ok').map(o => `<div class="row wrap" style="padding:10px 0;border-bottom:1px solid #F1F5F9"><div><b class="mono">${o.id}</b><div class="small muted">${o.items.map(i => prod(i.p).n + ' ×' + i.q).join(', ')}</div></div><span class="sp"></span><button class="btn sm" data-act="a-qc" data-v="pass" data-id="${o.id}">Pass</button><button class="btn bad sm" data-act="a-qc" data-v="fail" data-id="${o.id}">Fail</button></div>`).join('') || '<p class="muted small">No batches waiting for inspection.</p>'}
   <h3 style="margin-top:18px">Disputes</h3>${S.disputes.map(d => `<div style="padding:10px 0;border-bottom:1px solid #F1F5F9"><div class="row"><b class="mono">${d.id}</b><span class="small muted">${d.order} · by ${d.by}</span><span class="sp"></span><span class="chip ${d.open ? 'bad' : ''}">${d.open ? 'Open' : 'Resolved'}</span></div><p class="small">${esc(d.why)}</p>${d.open ? `<div class="row" style="margin-top:6px"><button class="btn sm" data-act="a-resolve" data-id="${d.id}" data-v="release">Release to vendor</button><button class="btn sec sm" data-act="a-resolve" data-id="${d.id}" data-v="partial">Partial credit</button></div>` : ''}</div>`).join('')}</div>
-  <div class="card"><h3>Order pipeline</h3>${S.orders.slice(0, 6).map(o => `<a href="#/order/${o.id}" style="display:block;padding:8px 6px;border-bottom:1px solid #F1F5F9;text-decoration:none;color:inherit" title="Open process status"><div class="row small wrap"><b class="mono">${o.id}</b>${stageChip(o)}<span class="sp"></span><b class="num">${fmt(o.cur, o.calc.total)}</b></div><div style="margin-top:6px">${stageBar(o)}</div></a>`).join('')}<a class="small" style="display:block;margin-top:10px" href="#/a/orders">View all orders →</a></div></div>`;
+  <div class="card"><h3>Order pipeline</h3>${S.orders.slice(0, 6).map(o => `<a href="#/order/${o.id}" style="display:block;padding:8px 6px;border-bottom:1px solid #F1F5F9;text-decoration:none;color:inherit" title="Open process status"><div class="row small wrap"><b class="mono">${o.id}</b>${stageChip(o)}<span class="sp"></span><b class="num">${fmt(o.cur, o.calc.total)}</b></div><div style="margin-top:6px">${stageBar(o)}</div></a>`).join('')}<a class="small" style="display:block;margin-top:10px" href="#/a/orders">View all orders →</a></div>${alertsCard()}</div>`;
 };
 V.afx = () => {
   const f = S.fx, r = f.rates;
@@ -555,15 +567,26 @@ V.aorders = () => {
   ${cons.length || S.orders.some(o => o.later || o.defer) ? `<div class="kpis">${kpi('Consignment', cons.length, cons.filter(o => !o.cons.closed).length + ' open')}${kpi('Pay later', S.orders.filter(o => o.later).length, 'orders')}${kpi('Deliver later', S.orders.filter(o => o.defer).length, S.orders.filter(held).length + ' on hold')}${kpi('Receivable now', mmk(owed + S.orders.filter(o => o.later && !o.later.paid && o.stage >= 14).reduce((a, o) => a + o.later.grossMMK, 0)), 'sold / delivered, unpaid')}</div>` : ''}
   <div class="card scroll"><table class="tbl"><thead><tr><th>Order</th><th>Buyer</th><th>Stage</th><th>Slip OCR</th><th class="r">Total</th></tr></thead><tbody>${list.map(o => `<tr><td><a class="mono" href="#/order/${o.id}">${o.id}</a> ${tagChips(o)}</td><td>${esc(o.buyer)}</td><td>${stageChip(o)}</td><td>${o.slip.conf.toFixed(1)}%</td><td class="r num">${fmt(o.cur, o.calc.total)}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">No orders in this view</td></tr>'}</tbody></table></div>`;
 };
-let AF = 'all';
+let AF = 'all', ALF = 'all';
+const unreadN = () => (S.alerts || []).filter(a => !a.read).length;
+const alertRow = a => { const [l, c, tc] = AL_GRP[a.group]; return `<a class="card hv" href="${a.href}" data-act="al-open" data-id="${a.id}" style="display:block;text-decoration:none;color:inherit;border-left:5px solid ${c};padding:12px 14px;${a.read ? 'opacity:.75' : ''}"><div class="row wrap"><span class="chip" style="background:${c}1f;color:${tc}"><i class="gdot" style="background:${c}"></i>${l}</span>${a.hot ? '<span class="chip bad">Needs attention</span>' : ''}${a.read ? '' : '<span class="chip ai">New</span>'}<span class="sp"></span><span class="small muted">${ago(a.ts)}</span></div><div style="margin-top:6px"><b>${esc(a.title)}</b></div><div class="small muted">${esc(a.msg)}</div></a>`; };
+V.aalerts = () => {
+  const A = S.alerts || [], list = A.filter(a => ALF === 'all' || a.group === ALF), un = g => A.filter(a => !a.read && (g === 'all' || a.group === g)).length;
+  return `<div class="title-row"><h1>Alerts</h1><span class="sp"></span><button class="btn sec sm" data-act="al-all" ${un('all') ? '' : 'disabled'}>Mark all read</button><button class="btn sec sm" data-act="al-clear" ${A.some(a => a.read) ? '' : 'disabled'}>Clear read</button></div>
+  <p class="muted">Everything suppliers, buyers and logistics do lands here, colour-coded by who did it.</p>
+  <div class="pills">${[['all', 'All', '#102A45'], ...Object.entries(AL_GRP).map(([k, v]) => [k, v[0], v[1]])].map(([k, n, c]) => `<button class="${ALF === k ? 'on' : ''}" data-act="al-flt" data-v="${k}"><i class="gdot" style="background:${c}"></i>${n}${un(k) ? ` <b>${un(k)}</b>` : ''}</button>`).join('')}</div>
+  <div class="grid" style="gap:10px">${list.map(alertRow).join('') || '<div class="empty card">No alerts yet. When a supplier, buyer or the 3PL does something, it appears here.</div>'}</div>`;
+};
+const alertsCard = () => `<div class="card"><div class="row wrap"><h3>Latest alerts</h3>${unreadN() ? `<span class="chip ai">${unreadN()} new</span>` : ''}<span class="sp"></span><a class="small" href="#/a/alerts">View all →</a></div><div class="grid" style="gap:8px;margin-top:8px">${(S.alerts || []).slice(0, 4).map(alertRow).join('') || '<p class="muted small">No alerts yet.</p>'}</div></div>`;
 V.aoptions = () => {
   const O = opts(), n = k => S.orders.filter(o => o[k]).length;
   const sw = (k, on, l) => `<button class="switch ${on ? 'on' : ''}" data-act="opt-on" data-k="${k}" role="switch" aria-checked="${on}" aria-label="${l}"></button>`;
+  const one = (k, l, arr) => `<label class="f">${l}</label><div class="pills">${arr.map(([v, n]) => `<button class="${String(O.cons[k]) === String(v) ? 'on' : ''}" data-act="opt-set" data-k="${k}" data-v="${v}">${n}</button>`).join('')}</div>`;
   const chips = (g, k, all, sel, lab) => `<div class="pills">${all.map(v => `<button class="${sel.includes(v) ? 'on' : ''}" data-act="opt-tog" data-g="${g}" data-k="${k}" data-v="${v}">${lab(v)}</button>`).join('')}</div>`;
   const fee = (g, arr) => `<div class="row wrap" style="gap:10px">${arr.map(v => `<label class="small" style="display:flex;align-items:center;gap:6px">${g === 'cons' ? v + '% deposit' : v + ' days'} →<input class="ofee" type="number" step="0.1" min="0" max="30" value="${O[g].fee[v] ?? 4}" data-g="${g}" data-d="${v}" style="width:68px;padding:6px;border:1px solid #cbd5e1;border-radius:8px"> %</label>`).join('')}</div>`;
   const head = (k, t, d, used) => `<div class="row wrap"><div><h3>${t}</h3><div class="small muted">${d}</div></div><span class="sp"></span><span class="chip gray">${used} order${used === 1 ? '' : 's'}</span>${sw(k, O[k].on, 'Enable ' + t)}</div>`;
   return `<a href="#/a/overview" class="small">← Overview</a><div class="title-row"><h1>Order options</h1><span class="sp"></span><button class="btn sec sm" data-act="opt-reset">Reset to defaults</button></div><p class="muted">Control which flexible terms buyers can choose at checkout. Changes apply to new orders immediately; existing orders keep the terms they were placed with.</p>
-  <div class="card">${head('cons', 'Consignment', 'Buyer takes the goods, pays as they sell. Platform advances the vendor.', n('cons'))}${O.cons.on ? `<label class="f">Deposit choices</label>${chips('cons', 'deps', [0, 10, 25, 50], O.cons.deps, v => v + '%')}<label class="f">Term choices</label>${chips('cons', 'terms', [30, 60, 90, 120], O.cons.terms, v => v + ' days')}<label class="f">Max term extensions (30 days each)</label><div class="pills">${[0, 1, 2, 3].map(v => `<button class="${O.cons.extMax === v ? 'on' : ''}" data-act="opt-ext" data-v="${v}">${v}</button>`).join('')}</div><label class="f">Consignment fee by deposit</label>${fee('cons', O.cons.deps)}` : ''}</div>
+  <div class="card">${head('cons', 'Consignment', 'Buyer takes the goods, pays as they sell. Platform advances the vendor.', n('cons'))}${O.cons.on ? `<p class="small muted" style="margin-top:8px">Buyers cannot change these. Every new consignment order uses the terms below.</p>${one('dep', 'Upfront deposit', [[0, 'None'], [10, '10%'], [25, '25%'], [50, '50%']])}${one('term', 'Consignment term', [30, 60, 90, 120].map(x => [x, x + ' days']))}${one('settle', 'Settlement', Object.entries(CONS_L.settle))}${one('unsold', 'Unsold goods at term end', Object.entries(CONS_L.unsold))}<label class="f">Max term extensions (30 days each)</label><div class="pills">${[0, 1, 2, 3].map(v => `<button class="${O.cons.extMax === v ? 'on' : ''}" data-act="opt-ext" data-v="${v}">${v}</button>`).join('')}</div><label class="f">Consignment fee by deposit level</label>${fee('cons', [0, 10, 25, 50])}` : ''}</div>
   <div class="card">${head('later', 'Pay later', 'No payment at checkout; buyer pays within the chosen days after delivery.', n('later'))}${O.later.on ? `<label class="f">Payment windows</label>${chips('later', 'days', [15, 30, 45, 60], O.later.days, v => v + ' days')}<label class="f">Fee by window</label>${fee('later', O.later.days)}` : ''}</div>
   <div class="card">${head('defer', 'Deliver later', 'Goods are packed and held at the hub, dispatched on a date the buyer picks.', n('defer'))}${O.defer.on ? `<label class="f">Dispatch delay choices</label>${chips('defer', 'days', [7, 14, 30, 60, 90], O.defer.days, v => v + ' days')}` : ''}</div>
   <button class="btn" data-act="opt-fee">Save fees</button>
@@ -707,7 +730,7 @@ function saveWh(vid, wid) {
 /* ---------- Burmese page titles ---------- */
 const PAGE_MM = {
   catalog: ['ကတ်တလောက်', 'အင်းလေးပိုးနှင့် ပုဂံယွန်းထည်'], cart: ['ကြိုတင်မှာယူမှု'], orders: ['အော်ဒါများ'], cargo: ['ကုန်စည်ခြေရာခံခြင်း'], lab: ['အသုံးပြုသူ စမ်းသပ်မှုနှင့် အခန်းကဏ္ဍ ပုံစံတူ'],
-  's/profile': ['လုပ်ငန်းနှင့် ကုန်လှောင်ရုံများ'], 'a/supplier': ['လုပ်ငန်းနှင့် ကုန်လှောင်ရုံများ'], 's/products': ['ကုန်ပစ္စည်းများ'], 'a/products': ['ကုန်ပစ္စည်းများ'], 'a/options': ['မှာယူမှု ရွေးချယ်စရာများ'],
+  'a/alerts': ['သတိပေးချက်များ'], 's/profile': ['လုပ်ငန်းနှင့် ကုန်လှောင်ရုံများ'], 'a/supplier': ['လုပ်ငန်းနှင့် ကုန်လှောင်ရုံများ'], 's/products': ['ကုန်ပစ္စည်းများ'], 'a/products': ['ကုန်ပစ္စည်းများ'], 'a/options': ['မှာယူမှု ရွေးချယ်စရာများ'],
   's/orders': ['အော်ဒါများ'], 's/stock': ['စတော့'], 's/payouts': ['ငွေထုတ်ယူမှု'],
   'l/manifest': ['ကုန်စည် မန်နီဖက်စ်'], 'l/transit': ['ပို့ဆောင်ဆဲ'], 'l/pod': ['ပို့ဆောင်ပြီးကြောင်း အထောက်အထား'],
   'a/overview': ['လုပ်ငန်းလည်ပတ်မှု အနှစ်ချုပ်'], 'a/fx': ['ငွေလွှဲနှုန်းနှင့် အမြတ်ခွန်အင်ဂျင်'], 'a/vendors': ['ကုန်သည် စိစစ်ခြင်းနှင့် KYC'], 'a/escrow': ['အာမခံငွေနှင့် စာရင်းဇယား'], 'a/roles': ['အခန်းကဏ္ဍအလိုက် ခွင့်ပြုချက်'],
@@ -739,7 +762,7 @@ const MM = {
   'All batches': 'အားလုံး', 'All': 'အားလုံး', 'Textiles': 'ပိုးထည်အထည်', 'Lacquerware': 'ယွန်းထည်', 'Tea & Coffee': 'လက်ဖက်နှင့် ကော်ဖီ', 'Gems & Jewelry': 'ကျောက်မျက်နှင့် လက်ဝတ်ရတနာ', 'Wellness': 'ကျန်းမာရေး',
   'Consignment': 'အပ်နှံရောင်းချမှု', 'Consignment terms': 'အပ်နှံစည်းမျဉ်းများ', 'Order type': 'မှာယူမှုပုံစံ', 'Report sales': 'ရောင်းရမှု ပို့ရန်', 'Settle now': 'ယခု ပေးချေမည်', 'Extend +30 days': 'ရက် ၃၀ တိုးမည်', 'Buy out remainder': 'ကျန်ပစ္စည်း ဝယ်မည်', 'Return unsold': 'မရောင်းရသည် ပြန်ပို့', 'Send settlement reminder': 'ပေးချေရန် သတိပေးမည်', 'Report & settle': 'ပို့၍ ပေးချေမည်',
   'Order options': 'မှာယူမှု ရွေးချယ်စရာများ', 'Pay later': 'နောက်မှ ပေးချေမည်', 'Deliver later': 'နောက်မှ ပို့ဆောင်မည်', 'Payment': 'ငွေပေးချေမှု', 'Delivery': 'ပို့ဆောင်မှု', 'Flexible terms': 'ပြောင်းလွယ်စည်းမျဉ်း', 'Pay later terms': 'နောက်မှပေးချေမှု စည်းမျဉ်း', 'Pay now': 'ယခု ပေးမည်', 'Release hold now': 'ယခု ထုတ်ပို့ရန် ဖွင့်မည်', 'Save fees': 'ကြေးများ သိမ်းမည်', 'Reset to defaults': 'မူလအတိုင်း ပြန်ထားမည်',
-  'Send for quality check': 'အရည်အသွေးစစ်ရန် ပို့မည်', 'Pass quality check': 'အရည်အသွေး အောင်မြင်', 'Quality check queue': 'အရည်အသွေးစစ်ဆေးရန် စာရင်း', 'Pass': 'အောင်', 'Fail': 'ကျ', 'Business & warehouses': 'လုပ်ငန်းနှင့် ကုန်လှောင်ရုံများ', 'Warehouses': 'ကုန်လှောင်ရုံများ', 'Supplier details': 'ကုန်သည် အချက်အလက်', 'Edit details': 'အချက်အလက် ပြင်မည်', '+ Add warehouse': '+ ကုန်လှောင်ရုံ ထည့်ရန်', 'Add warehouse': 'ကုန်လှောင်ရုံ ထည့်ရန်', 'Edit warehouse': 'ကုန်လှောင်ရုံ ပြင်ရန်', 'Save details': 'အချက်အလက် သိမ်းမည်', 'Save warehouse': 'ကုန်လှောင်ရုံ သိမ်းမည်', 'Delete warehouse?': 'ကုန်လှောင်ရုံ ဖျက်မလား?', 'Profile & warehouses': 'ပရိုဖိုင်နှင့် ကုန်လှောင်ရုံ', 'Manage products': 'ကုန်ပစ္စည်း စီမံရန်', 'Next →': 'ရှေ့ဆက်မည် →', 'Next': 'ရှေ့ဆက်မည်', '+ Add product': '+ ကုန်ပစ္စည်း ထည့်ရန်', 'Add product': 'ကုန်ပစ္စည်း ထည့်ရန်', 'Edit product': 'ကုန်ပစ္စည်း ပြင်ရန်', 'Edit': 'ပြင်မည်', 'Delete': 'ဖျက်မည်', 'Save changes': 'ပြောင်းလဲမှု သိမ်းမည်', 'Delete product?': 'ကုန်ပစ္စည်း ဖျက်မလား?', 'Remove photo': 'ဓာတ်ပုံ ဖယ်ရှားမည်', 'Products': 'ကုန်ပစ္စည်းများ', 'Pickup preparation':'ပစ္စည်းလာယူရန် ပြင်ဆင်မှု', 'Cargo moving': 'ကုန်စည် သွားနေ', 'Needs attention': 'စစ်ဆေးရန်လို',
+  'Send for quality check': 'အရည်အသွေးစစ်ရန် ပို့မည်', 'Pass quality check': 'အရည်အသွေး အောင်မြင်', 'Quality check queue': 'အရည်အသွေးစစ်ဆေးရန် စာရင်း', 'Pass': 'အောင်', 'Fail': 'ကျ', 'Business & warehouses': 'လုပ်ငန်းနှင့် ကုန်လှောင်ရုံများ', 'Warehouses': 'ကုန်လှောင်ရုံများ', 'Supplier details': 'ကုန်သည် အချက်အလက်', 'Edit details': 'အချက်အလက် ပြင်မည်', '+ Add warehouse': '+ ကုန်လှောင်ရုံ ထည့်ရန်', 'Add warehouse': 'ကုန်လှောင်ရုံ ထည့်ရန်', 'Edit warehouse': 'ကုန်လှောင်ရုံ ပြင်ရန်', 'Save details': 'အချက်အလက် သိမ်းမည်', 'Save warehouse': 'ကုန်လှောင်ရုံ သိမ်းမည်', 'Delete warehouse?': 'ကုန်လှောင်ရုံ ဖျက်မလား?', 'Profile & warehouses': 'ပရိုဖိုင်နှင့် ကုန်လှောင်ရုံ', 'Manage products': 'ကုန်ပစ္စည်း စီမံရန်', 'Alerts': 'သတိပေးချက်များ', 'Latest alerts': 'နောက်ဆုံး သတိပေးချက်များ', 'Mark all read': 'အားလုံး ဖတ်ပြီးပြု', 'Clear read': 'ဖတ်ပြီးသည်များ ဖယ်ရန်', 'View all →': 'အားလုံးကြည့်ရန် →', 'Next →': 'ရှေ့ဆက်မည် →', 'Next': 'ရှေ့ဆက်မည်', '+ Add product': '+ ကုန်ပစ္စည်း ထည့်ရန်', 'Add product': 'ကုန်ပစ္စည်း ထည့်ရန်', 'Edit product': 'ကုန်ပစ္စည်း ပြင်ရန်', 'Edit': 'ပြင်မည်', 'Delete': 'ဖျက်မည်', 'Save changes': 'ပြောင်းလဲမှု သိမ်းမည်', 'Delete product?': 'ကုန်ပစ္စည်း ဖျက်မလား?', 'Remove photo': 'ဓာတ်ပုံ ဖယ်ရှားမည်', 'Products': 'ကုန်ပစ္စည်းများ', 'Pickup preparation':'ပစ္စည်းလာယူရန် ပြင်ဆင်မှု', 'Cargo moving': 'ကုန်စည် သွားနေ', 'Needs attention': 'စစ်ဆေးရန်လို',
   'Home': 'ပင်မ', 'Catalog': 'ကတ်တလောက်', 'Orders': 'အော်ဒါများ', 'Cargo': 'ကုန်စည်', 'Account': 'အကောင့်', 'Stock': 'စတော့', 'Payouts': 'ငွေထုတ်', 'Manifest': 'မန်နီဖက်စ်', 'POD': 'POD', 'Overview': 'အနှစ်ချုပ်', 'FX Engine': 'FX', 'Vendors': 'ကုန်သည်များ', 'Escrow': 'အာမခံငွေ', 'Test Lab': 'စမ်းသပ်ခန်း',
   /* section titles */
   'Landed cost': 'ရောက်ရှိကုန်ကျစရိတ်', 'Items': 'ကုန်ပစ္စည်းများ', 'Payment slip': 'ငွေပေးချေ ဘောင်ချာ', 'Order journey · 14 stages': 'အော်ဒါ ခရီးစဉ် · အဆင့် ၁၄', 'Weight intake & consolidation': 'အလေးချိန် မှတ်သားခြင်းနှင့် ပေါင်းစည်းခြင်း',
@@ -782,7 +805,7 @@ function route() {
   const map = { home: V.bhome, account: V.account, invoices: V.invoices, login: V.login, catalog: V.catalog, product: () => V.product(b), cart: V.cart, orders: V.orders, order: () => V.order(b), cargo: V.cargo, lab: V.lab };
   if (a === 's') html = { home: V.shome, orders: V.sorders, stock: V.sstock, payouts: V.spayouts, products: V.sproducts, profile: V.sprofile }[b]?.();
   else if (a === 'l') html = { home: V.lhome, manifest: V.manifest, transit: V.transit, pod: V.podlist }[b]?.();
-  else if (a === 'a') html = { overview: V.aoverview, orders: V.aorders, fx: V.afx, vendors: V.avendors, escrow: V.aescrow, roles: V.aroles, options: V.aoptions, products: V.aproducts, supplier: () => V.profile(c, true) }[b]?.();
+  else if (a === 'a') html = { overview: V.aoverview, orders: V.aorders, fx: V.afx, vendors: V.avendors, escrow: V.aescrow, roles: V.aroles, options: V.aoptions, products: V.aproducts, alerts: V.aalerts, supplier: () => V.profile(c, true) }[b]?.();
   else html = map[a]?.();
   const bo = ['home', 'catalog', 'product', 'cart', 'orders', 'cargo', 'invoices'];
   if (S.role && ((a === 's' && S.role !== 'SUPPLIER') || (a === 'l' && S.role !== 'DELIVERY') || (a === 'a' && S.role !== 'ADMIN') || (bo.includes(a) && S.role !== 'BUYER'))) { location.hash = ROLES[S.role].home; return; }
@@ -794,7 +817,7 @@ function route() {
   addMmTitle(a, b);
   const cr = $('#chrome');
   if (r && a !== 'login') {
-    cr.innerHTML = `<div class="rolebar"><span class="dot"></span>${BANNER[r]} · ${ROLES[r].name}<span class="sp"></span><button data-act="logout">${ic('out')} ${t('logout')}</button></div><header class="top"><a class="brand" href="${ROLES[r].home}"><svg width="30" height="30" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#0D5C4D"/><path d="M32 32c-5-9-17-9-17 0s12 9 17 0 12-9 17 0-12 9-17 0z" fill="none" stroke="#D4AF37" stroke-width="5" stroke-linecap="round"/></svg><span><b>Cindy's Choices</b><small>Infinity Plus by Cindy</small></span></a><span class="tb-sp"></span><span class="small muted" style="display:none" id="who">${esc(ROLES[r].user)}</span><div class="langs" style="margin:0;padding:2px">${[['mm', 'မြ'], ['en', 'EN'], ['th', 'ไทย']].map(([k, n]) => `<button style="padding:4px 10px" class="${S.lang === k ? 'on' : ''}" data-act="lang" data-v="${k}">${n}</button>`).join('')}</div></header>`;
+    cr.innerHTML = `<div class="rolebar"><span class="dot"></span>${BANNER[r]} · ${ROLES[r].name}<span class="sp"></span><button data-act="logout">${ic('out')} ${t('logout')}</button></div><header class="top"><a class="brand" href="${ROLES[r].home}"><svg width="30" height="30" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#0D5C4D"/><path d="M32 32c-5-9-17-9-17 0s12 9 17 0 12-9 17 0-12 9-17 0z" fill="none" stroke="#D4AF37" stroke-width="5" stroke-linecap="round"/></svg><span><b>Cindy's Choices</b><small>Infinity Plus by Cindy</small></span></a><span class="tb-sp"></span><span class="small muted" style="display:none" id="who">${esc(ROLES[r].user)}</span>${r === 'ADMIN' ? `<a class="bell" href="#/a/alerts" aria-label="Alerts${unreadN() ? ', ' + unreadN() + ' new' : ''}">${ic('bell')}${unreadN() ? `<b>${unreadN() > 99 ? '99+' : unreadN()}</b>` : ''}</a>` : ''}<div class="langs" style="margin:0;padding:2px">${[['mm', 'မြ'], ['en', 'EN'], ['th', 'ไทย']].map(([k, n]) => `<button style="padding:4px 10px" class="${S.lang === k ? 'on' : ''}" data-act="lang" data-v="${k}">${n}</button>`).join('')}</div></header>`;
     const cartN = S.cart.length;
     $('#nav').innerHTML = NAV[r].map(([href, i, k]) => `<a href="${href}" class="${h.startsWith(href) || (k === 'orders' && h.startsWith('#/order/')) ? 'on' : ''}">${ic(i)}<span>${t(k)}</span>${k === 'cart' && cartN ? `<span class="badge">${cartN}</span>` : ''}</a>`).join('');
   } else { cr.innerHTML = ''; $('#nav').innerHTML = ''; }
@@ -820,15 +843,20 @@ document.addEventListener('click', e => {
     case 'obd': { const o = ord(id); sheet(breakdownHtml(o.items, o.cur, o.id + ' landed cost') + '<button class="btn sec" style="width:100%;margin-top:12px" data-act="close">Close</button>'); break; }
     case 'reserve': { const p = prod(id), q = Math.round(+$('#qty').value); if (!p.live || p.del) return toast('This batch is not available'); if (!(q >= p.moq)) return toast('Minimum order is ' + p.moq); if (q > p.quota - p.res) return toast('Only ' + (p.quota - p.res) + ' units left'); const c = S.cart.find(x => x.p === id); c ? c.q = q : S.cart.push({ p: id, q }); save(); toast('Reserved ' + q + ' units'); location.hash = '#/cart'; break; }
     case 'rm': S.cart = S.cart.filter(x => x.p !== id); save(); rerender(); break;
-    case 'pay': { const d = S.cons; if (d && ((d.on && d.dep === 0) || d.later)) { S.pay = { ocr: { ref: 'CONSIGN-' + S.nextOrder, amt: 0, ts: Date.now(), conf: 100 } }; placeOrder(); break; } S.pay = null; payScreen(); break; }
-    case 'cons': { const d = consDraft(), k = el.dataset.k; if (k === 'pm') { d.on = v === 'cons'; d.later = v === 'later' ? (d.later || opts().later.days[0]) : 0; } else d[k] = ['dep', 'term', 'later', 'defer'].includes(k) ? +v : v; save(); rerender(); break; }
+    case 'pay': { const d = S.cons; if (d) sanitizeDraft(d); if (d && ((d.on && d.dep === 0) || d.later)) { S.pay = { ocr: { ref: 'CONSIGN-' + S.nextOrder, amt: 0, ts: Date.now(), conf: 100 } }; placeOrder(); break; } S.pay = null; payScreen(); break; }
+    case 'cons': { const d = consDraft(), k = el.dataset.k; if (k === 'pm') { d.on = v === 'cons'; d.later = v === 'later' ? (d.later || opts().later.days[0]) : 0; } else if (['later', 'defer'].includes(k)) d[k] = +v;   /* consignment terms are admin-set */ save(); rerender(); break; }
     case 'l-pay': { const o = ord(id), l = o.later; postLedger(S, o, 'Buyer Funds', 'Platform Float', l.grossMMK, 'Pay-later settlement'); l.paid = true; ev(S, 'buyer', `${o.id} pay-later settled ${mmk(l.grossMMK)}`); save(); toast('Payment recorded'); rerender(); break; }
     case 'd-release': { const o = ord(id); o.defer.released = true; ev(S, S.role === 'ADMIN' ? 'admin' : S.role === 'BUYER' ? 'buyer' : '3pl', `${o.id} dispatch hold released`); save(); toast('Hold released · cargo can be dispatched'); rerender(); break; }
     case 'opt-on': { const O = opts(); O[el.dataset.k].on = !O[el.dataset.k].on; ev(S, 'admin', `Option "${el.dataset.k}" ${O[el.dataset.k].on ? 'enabled' : 'disabled'}`); save(); rerender(); break; }
+    case 'opt-set': { const O = opts(), k = el.dataset.k; O.cons[k] = (k === 'dep' || k === 'term') ? +v : v; ev(S, 'admin', `Consignment ${k} set to ${v}`); save(); rerender(); break; }
     case 'opt-tog': { const O = opts(), arr = O[el.dataset.g][el.dataset.k], n = +v, i = arr.indexOf(n); if (i >= 0) { if (arr.length === 1) return toast('Keep at least one choice'); arr.splice(i, 1); } else { arr.push(n); arr.sort((x, y) => x - y); } ev(S, 'admin', `Option choices updated · ${el.dataset.g}`); save(); rerender(); break; }
     case 'opt-ext': { opts().cons.extMax = +v; save(); rerender(); break; }
     case 'opt-fee': { const O = opts(); document.querySelectorAll('.ofee').forEach(x => { const n = parseFloat(x.value); if (n >= 0 && n <= 30) O[x.dataset.g].fee[x.dataset.d] = n; }); ev(S, 'admin', 'Option fees updated'); save(); toast('Fees saved'); rerender(); break; }
     case 'opt-reset': S.opts = null; opts(); ev(S, 'admin', 'Order options reset to defaults'); save(); toast('Defaults restored'); rerender(); break;
+    case 'al-open': { const a = (S.alerts || []).find(x => x.id === id); if (a) { a.read = true; save(); } break; }
+    case 'al-all': (S.alerts || []).forEach(a => { a.read = true; }); save(); rerender(); break;
+    case 'al-clear': S.alerts = (S.alerts || []).filter(a => !a.read); save(); rerender(); break;
+    case 'al-flt': ALF = v; rerender(); break;
     case 'v-edit': vendorForm(id); break;
     case 'v-save': saveVendor(id); break;
     case 'w-edit': whForm(id, el.dataset.w); break;

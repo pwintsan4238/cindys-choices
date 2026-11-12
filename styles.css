@@ -228,3 +228,10 @@ nav.bn a .mm-l{font-size:9px;line-height:1.2;margin-top:-1px}
 .card,.escrow{min-width:0}
 img,svg{max-width:100%}
 @media (min-width:1500px){main{max-width:1280px}}
+
+/* admin alerts */
+.gdot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.bell{position:relative;display:inline-grid;place-items:center;width:40px;height:40px;border-radius:50%;color:var(--navy);margin-right:6px}
+.bell .ic{width:22px;height:22px}
+.bell b{position:absolute;top:2px;right:0;min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:#dc2626;color:#fff;font:700 11px/18px var(--f-ui);text-align:center}
+.pills button b{display:inline-block;min-width:18px;padding:0 5px;border-radius:99px;background:#dc2626;color:#fff;font-size:11px;line-height:18px;margin-left:4px}
