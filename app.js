@@ -51,7 +51,7 @@ let PRODUCTS = [
   { id: 'P7', n: 'Pyin Oo Lwin Green Tea (5 kg)', mm: 'ပင်ဥလွင် လက်ဖက်စိမ်း', cat: 'Tea & Coffee', v: 'V3', unit: 55000, kg: 5, moq: 30, quota: 180, res: 70, cut: 30, from: 'Pyin Oo Lwin', note: 'Spring flush, hand-rolled', tag: 'Single Origin' },
   { id: 'P8', n: 'Padauk Lacquer Jewellery Box', mm: 'ပိတောက် ယွန်းလက်ဝတ်ရတနာသေတ္တာ', cat: 'Lacquerware', v: 'V1', unit: 72000, kg: 1.2, moq: 12, quota: 72, res: 70, cut: 9, from: 'Bagan', note: 'Teak-core, bamboo-weave, gilded', tag: 'Closing soon' }
 ];
-const VENDORS = [
+let VENDORS = [
   { id: 'V1', n: 'Bagan Master Crafts', city: 'Bagan', kyc: 'verified', tier: 'Gold', docs: 'NRC · MSME · FDA' },
   { id: 'V2', n: 'Inle Lotus Weavers Guild', city: 'Inle', kyc: 'verified', tier: 'Gold', docs: 'NRC · Guild cert' },
   { id: 'V3', n: 'Shan Mountain Organic', city: 'Ywangan', kyc: 'verified', tier: 'Silver', docs: 'NRC · Organic cert' },
@@ -112,7 +112,20 @@ function seed() {
 /* ---------- state ---------- */
 let S;
 const PRODUCTS0 = JSON.stringify(PRODUCTS);
-function syncProducts() { if (!S.products) S.products = JSON.parse(PRODUCTS0).map(p => ({ ...p, live: true })); PRODUCTS = S.products; }
+function defaultWh(v) {
+  const w = (n, addr, city, contact, phone, hrs, i) => ({ id: v.id + '-W' + i, name: n, addr, city, contact, phone, hours: hrs, active: true });
+  return v.id === 'V1' ? [w('Bagan Main Workshop', 'Myinkaba village road', 'Bagan', 'U Kyaw Zin', '+95 9 7xx xxx 442', '08:00–17:00', 1), w('Yangon Consolidation Depot', 'Hlaing Thar Yar Industrial Zone', 'Yangon', 'Daw Mya', '+95 9 7xx xxx 443', '09:00–18:00', 2)] : [w(v.city + ' warehouse', '', v.city, '', '', '09:00–17:00', 1)];
+}
+function syncProducts() {
+  if (!S.products) S.products = JSON.parse(PRODUCTS0).map(p => ({ ...p, live: true }));
+  PRODUCTS = S.products; VENDORS = S.vendors;
+  VENDORS.forEach(v => { if (!v.wh) v.wh = defaultWh(v); if (v.addr === undefined) { v.addr = ''; v.phone = v.phone || ''; v.contact = v.contact || ''; } });
+  PRODUCTS.forEach(p => { if (!p.wh) { const v = VENDORS.find(x => x.id === p.v); if (v) p.wh = (p.id === 'P8' && v.wh[1] ? v.wh[1] : v.wh[0]).id; } });
+}
+const vendorOf = id => VENDORS.find(v => v.id === id);
+const whOf = p => { const v = vendorOf(p.v); return v && (v.wh.find(w => w.id === p.wh) || v.wh[0]); };
+const whLabel = p => { const w = whOf(p); return w ? `${w.name} · ${w.city}` : '—'; };
+const vname = () => (vendorOf(MYV) || { n: 'your business' }).n;
 function load() { try { S = JSON.parse(localStorage.getItem('cc_state')); } catch (e) { } if (!S || S.v !== 1) S = seed(); syncProducts(); }
 function save() { try { localStorage.setItem('cc_state', JSON.stringify(S)); } catch (e) { } idbPut(); }
 function ev(s, k, m) { s.events.unshift({ ts: Date.now(), k, m }); s.events.length = Math.min(s.events.length, 80); }
@@ -248,7 +261,7 @@ V.product = id => {
   return `<a href="#/catalog" class="small">← ${t('catalog')}</a>
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
   <div class="card" style="padding:0;overflow:hidden"><div class="art" style="border-radius:0">${art(p)}</div></div>
-  <div class="card"><span class="chip ai">${ic('spark')} ${p.tag}</span><h1 class="disp" style="margin:10px 0 4px">${p.n}</h1><p class="muted">${p.mm}</p><p style="margin-top:8px">${p.note}. Origin: ${p.from}. Supplier: ${VENDORS.find(v => v.id === p.v).n}.</p>
+  <div class="card"><span class="chip ai">${ic('spark')} ${p.tag}</span><h1 class="disp" style="margin:10px 0 4px">${p.n}</h1><p class="muted">${p.mm}</p><p style="margin-top:8px">${p.note}. Origin: ${p.from}. Supplier: ${VENDORS.find(v => v.id === p.v).n}.</p><p class="small muted">${ic('pin')} Dispatched from ${esc(whLabel(p))}</p>
    <div style="margin-top:14px"><div class="row small"><b>Batch quota</b><span class="sp"></span><span class="num">${p.res}/${p.quota}</span></div><div class="bar ${pct >= 85 ? 'hot' : ''}" style="margin-top:6px"><i style="width:${pct}%"></i></div>
    <div class="row small muted" style="margin-top:6px"><span>${left} units left · MOQ ${p.moq}</span><span class="sp"></span><span class="cut">${ic('clock')} Dispatch cutoff <b data-cut="${p.id}">${cdown(cutTs(p) - Date.now())}</b></span></div></div>
    <div class="row" style="margin-top:16px"><div><div class="eyebrow">Wholesale / unit</div><div class="price num" style="font:700 26px var(--f-ui)">${fmt(S.cur, unitCur(p, S.cur))}</div><div class="small muted num">${mmk(p.unit)} artisan cost</div></div><span class="sp"></span><select class="sel sm" data-act="cur" aria-label="Currency">${Object.keys(CUR).map(c => `<option ${S.cur === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
@@ -356,7 +369,7 @@ V.order = id => {
   return `<a href="${back[0]}" class="small">← ${back[1]}</a><div class="row wrap"><h1 class="mono" style="font-size:22px">${o.id}</h1>${tagChips(o)}${stageChip(o)}</div>${adminPanel}${o.cons ? consCard(o) : ''}${o.later ? laterCard(o) : ''}${o.defer ? deferCard(o) : ''}${shipCard}
   <div class="escrow"><div class="eyebrow" style="color:#9fb4c9">Escrow vault</div><div class="big num">${fmt(o.cur, o.calc.total)}</div><div class="small" style="opacity:.8">${held ? 'Held in smart escrow · ' + o.rail : o.status === 'declined' ? 'Refunded to buyer' : 'Awaiting payment verification'}</div>
    <div class="split"><div class="${o.rel.dep ? 'rel' : ''}">50% deposit${o.rel.dep ? ' · released' : ''}<b class="num">${fmt(o.cur, depAmt)}</b>at Stage 11</div><div class="${o.rel.bal ? 'rel' : ''}">50% balance${o.rel.bal ? ' · released' : ''}<b class="num">${fmt(o.cur, depAmt)}</b>at Stage 14 POD</div></div></div>
-  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))"><div class="card"><h3>Items</h3><ul class="bd">${o.items.map(i => `<li><span>${prod(i.p).n}<small>${i.q} units</small></span><b class="num">${fmt(o.cur, unitCur(prod(i.p), o.cur) * i.q)}</b></li>`).join('')}</ul><button class="btn sec sm" data-act="obd" data-id="${o.id}">Cost breakdown</button>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))"><div class="card"><h3>Items</h3><ul class="bd">${o.items.map(i => `<li><span>${prod(i.p).n}<small>${i.q} units · from ${esc(whLabel(prod(i.p)))}</small></span><b class="num">${fmt(o.cur, unitCur(prod(i.p), o.cur) * i.q)}</b></li>`).join('')}</ul><button class="btn sec sm" data-act="obd" data-id="${o.id}">Cost breakdown</button>
    <h3 style="margin-top:18px">Payment slip</h3><dl class="ocr"><dt>Reference</dt><dd class="mono">${o.slip.ref}</dd><dt>OCR confidence</dt><dd>${o.slip.conf.toFixed(1)}%</dd><dt>Captured</dt><dd>${dt(o.slip.ts)}</dd></dl></div>
   <div class="card"><h3>Order journey · 14 stages</h3><ol class="tl" style="margin-top:12px">${STAGES.map((n, i) => { const s = i + 1, m = o.ms.find(x => x.s === s), cls = s < o.stage || (s === o.stage && s === 14) ? 'done' : s === o.stage ? 'cur' : ''; return `<li class="${cls}"><span class="d">${cls === 'done' ? ic('check') : ''}</span><b>${n}</b><span>${m ? dt(m.ts) : ''}${s === 11 ? ' · releases 50% deposit' : s === 14 ? ' · releases 50% balance' : ''}</span></li>`; }).join('')}</ol></div></div>
   ${o.stage === 13 && S.role === 'BUYER' ? `<button class="btn xl" data-act="pod" data-id="${o.id}">${ic('pen')} Confirm delivery &amp; sign POD</button>` : ''}
@@ -423,13 +436,13 @@ V.sorders = () => {
     else if (st === 9) act = `<button class="btn xl" data-act="s-label" data-id="${o.id}">${ic('qr')} Print ${t('label')}</button>`;
     else if (st === 10) act = `<button class="btn acc xl" data-act="s-ready" data-id="${o.id}">${ic('box')} ${t('pickup')}</button>`;
     else act = `<span class="chip">${STAGES[st - 1]}</span>`;
-    return `<div class="card"><div class="row wrap"><b class="mono">${o.id}</b><span class="sp"></span>${stageChip(o)}</div><div class="eyebrow" style="margin-top:10px">Direct escrow PO · locked</div><div class="num" style="font:700 26px var(--f-ui)">${mmk(a)} <small class="muted" style="font:500 12px var(--f-body)">MMK</small></div><p class="small muted">≈ ${fmt('THB', toCur(a, 'THB'))} · 50/50 staged</p>${o.cons ? '<p class="small"><span class="chip ai">Consignment</span> Your payout is guaranteed by the platform</p>' : ''}
+    return `<div class="card"><div class="row wrap"><b class="mono">${o.id}</b><span class="sp"></span>${stageChip(o)}</div><div class="eyebrow" style="margin-top:10px">Direct escrow PO · locked</div><div class="num" style="font:700 26px var(--f-ui)">${mmk(a)} <small class="muted" style="font:500 12px var(--f-body)">MMK</small></div><p class="small muted">≈ ${fmt('THB', toCur(a, 'THB'))} · 50/50 staged</p><p class="small muted">${ic('pin')} Pickup: ${[...new Set(o.items.map(i => whLabel(prod(i.p))))].map(esc).join(' + ')}</p>${o.cons ? '<p class="small"><span class="chip ai">Consignment</span> Your payout is guaranteed by the platform</p>' : ''}
     <ul class="bd" style="margin:8px 0 12px">${o.items.map(i => { const p = prod(i.p); return `<li><span>${p.mm}<small>${p.n} · ${i.q} units</small></span><b class="num">${mmk(p.unit * i.q)}</b></li>`; }).join('')}</ul>${act}</div>`;
   }).join('') || '<div class="empty card">No orders yet. New buyer orders appear here instantly.</div>'}</div>`;
 };
 V.sstock = () => {
   const mine = mineP(MYV);
-  return `<div class="supplier view">${syncBar()}<div style="height:16px"></div><div class="title-row"><h1>${t('stock')}</h1><span class="sp"></span><a class="btn sm" href="#/s/products">Manage products</a></div><p class="muted">Shelf stock for Bagan Master Crafts.</p><div class="grid g2">${mine.map(p => `<div class="card"><b>${p.n}</b><div class="small muted">${p.mm || ''}</div><div class="row" style="margin:10px 0"><span class="chip ${p.live ? '' : 'gray'}">${p.live ? 'Live' : 'Not live'}</span><span class="chip">${p.quota - p.res} open in batch</span><span class="chip gray">${p.res} reserved</span></div><div class="bar"><i style="width:${p.res / p.quota * 100}%"></i></div><p class="small muted" style="margin-top:8px">Unit price lock: <b class="num">${mmk(p.unit)}</b></p></div>`).join('')}</div></div>`;
+  return `<div class="supplier view">${syncBar()}<div style="height:16px"></div><div class="title-row"><h1>${t('stock')}</h1><span class="sp"></span><a class="btn sec sm" href="#/s/profile">Warehouses</a><a class="btn sm" href="#/s/products">Manage products</a></div><p class="muted">Shelf stock for ${vname()}.</p><div class="grid g2">${mine.map(p => `<div class="card"><b>${p.n}</b><div class="small muted">${p.mm || ''}</div><div class="row" style="margin:10px 0"><span class="chip ${p.live ? '' : 'gray'}">${p.live ? 'Live' : 'Not live'}</span><span class="chip">${p.quota - p.res} open in batch</span><span class="chip gray">${p.res} reserved</span></div><div class="bar"><i style="width:${p.res / p.quota * 100}%"></i></div><p class="small muted" style="margin-top:8px">Unit price lock: <b class="num">${mmk(p.unit)}</b></p></div>`).join('')}</div></div>`;
 };
 V.spayouts = () => {
   const L = S.ledger.filter(e => e.cr === 'Vendor Payable'), tot = L.reduce((a, e) => a + e.mmk, 0);
@@ -442,7 +455,7 @@ V.manifest = () => {
   const ready = S.orders.filter(o => o.stage === 11 && !held(o)), onHold = S.orders.filter(o => o.stage === 11 && held(o));
   return `<div class="title-row"><h1>Cargo manifest</h1><span class="sp"></span><span class="chip warn">${ready.length} awaiting pickup</span></div>
   <div class="card"><h3>Weight intake &amp; consolidation</h3><p class="small muted">Tick orders, enter measured weights, then generate one MAWB.</p>
-  <div class="scroll"><table class="tbl" style="margin-top:8px"><thead><tr><th></th><th>Order</th><th>Items</th><th class="r">Est. kg</th><th class="r">Gross kg</th><th class="r">Vol. kg</th></tr></thead><tbody>${ready.map(o => `<tr><td><input type="checkbox" class="pick" value="${o.id}" checked aria-label="Select ${o.id}"></td><td class="mono">${o.id}</td><td class="small">${o.items.map(i => prod(i.p).n.split(' ').slice(0, 3).join(' ') + ' ×' + i.q).join(', ')}</td><td class="r num">${o.calc.kg.toFixed(1)}</td><td class="r"><input class="inp num gw" style="width:80px;height:32px" value="${o.calc.kg.toFixed(1)}" data-id="${o.id}" inputmode="decimal"></td><td class="r"><input class="inp num vw" style="width:80px;height:32px" value="${(o.calc.kg * 1.2).toFixed(1)}" data-id="${o.id}" inputmode="decimal"></td></tr>`).join('') || '<tr><td colspan="6" class="muted">No packed orders yet. Vendors mark orders "ready for pickup" at Stage 11.</td></tr>'}</tbody></table></div>
+  <div class="scroll"><table class="tbl" style="margin-top:8px"><thead><tr><th></th><th>Order</th><th>Items</th><th class="r">Est. kg</th><th class="r">Gross kg</th><th class="r">Vol. kg</th></tr></thead><tbody>${ready.map(o => `<tr><td><input type="checkbox" class="pick" value="${o.id}" checked aria-label="Select ${o.id}"></td><td class="mono">${o.id}</td><td class="small">${o.items.map(i => prod(i.p).n.split(' ').slice(0, 3).join(' ') + ' ×' + i.q).join(', ')}<div class="muted">${ic('pin')} ${[...new Set(o.items.map(i => whLabel(prod(i.p))))].map(esc).join(' + ')}</div></td><td class="r num">${o.calc.kg.toFixed(1)}</td><td class="r"><input class="inp num gw" style="width:80px;height:32px" value="${o.calc.kg.toFixed(1)}" data-id="${o.id}" inputmode="decimal"></td><td class="r"><input class="inp num vw" style="width:80px;height:32px" value="${(o.calc.kg * 1.2).toFixed(1)}" data-id="${o.id}" inputmode="decimal"></td></tr>`).join('') || '<tr><td colspan="6" class="muted">No packed orders yet. Vendors mark orders "ready for pickup" at Stage 11.</td></tr>'}</tbody></table></div>
   ${onHold.length ? `<p class="small muted" style="margin-top:10px">${onHold.map(o => `<span class="chip warn">${o.id} · hold until ${dt(o.defer.until)}</span>`).join(' ')}</p>` : ''}
   <div class="row wrap" style="margin-top:12px"><select class="sel sm" id="mode"><option>Land · Mae Sot → Bangkok</option><option>Air · Yangon → Bangkok (BKK)</option><option>Air · Yangon → Taipei (TPE)</option></select><span class="sp"></span><button class="btn" data-act="consol" ${ready.length ? '' : 'disabled'}>${ic('list')} Generate MAWB &amp; dispatch</button></div></div>`;
 };
@@ -488,7 +501,7 @@ V.afx = () => {
    <div class="row" style="margin-top:12px"><button class="btn" data-act="fx-save">Apply override</button><button class="btn sec" data-act="fx-auto">Resume automatic</button></div></div></div>
   <div class="card"><h3>MMK / USD · last ticks</h3>${pts ? `<svg viewBox="0 0 300 56" style="width:100%;height:80px"><polyline points="${pts}" fill="none" stroke="#0D5C4D" stroke-width="2"/></svg>` : '<p class="muted small">Ticks appear as the automated feed runs (or use the Test Lab → Admin FX).</p>'}</div>`;
 };
-V.avendors = () => `<h1>Vendor vetting &amp; KYC</h1><div class="card scroll"><table class="tbl"><thead><tr><th>Vendor</th><th>City</th><th>Documents</th><th>Tier</th><th>KYC</th><th></th></tr></thead><tbody>${S.vendors.map(v => `<tr><td><b>${v.n}</b></td><td>${v.city}</td><td class="small">${v.docs}</td><td>${v.tier}</td><td><span class="chip ${v.kyc === 'verified' ? '' : 'warn pulse'}">${v.kyc}</span></td><td class="r">${v.kyc === 'pending' ? `<button class="btn sm" data-act="a-kyc" data-id="${v.id}">Approve</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
+V.avendors = () => `<h1>Vendor vetting &amp; KYC</h1><div class="card scroll"><table class="tbl"><thead><tr><th>Vendor</th><th>City</th><th>Documents</th><th>Tier</th><th>KYC</th><th></th></tr></thead><tbody>${S.vendors.map(v => `<tr><td><b>${v.n}</b></td><td>${v.city}</td><td class="small">${v.docs}</td><td>${v.tier}</td><td><span class="chip ${v.kyc === 'verified' ? '' : 'warn pulse'}">${v.kyc}</span></td><td class="r"><a class="btn sec sm" href="#/a/supplier/${v.id}">Profile &amp; warehouses</a> ${v.kyc === 'pending' ? `<button class="btn sm" data-act="a-kyc" data-id="${v.id}">Approve</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
 V.aescrow = () => {
   const ok = verifyLedger(), open = S.orders.filter(o => o.stage >= 4 && o.stage < 14 && o.status !== 'declined');
   return `<div class="title-row"><h1>Escrow &amp; ledger</h1><span class="sp"></span><span class="chip ${ok ? '' : 'bad'}">${ic(ok ? 'check' : 'x')} Hash chain ${ok ? 'verified' : 'BROKEN'}</span></div>
@@ -523,7 +536,7 @@ V.invoices = () => {
 V.shome = () => {
   const o5 = S.orders.filter(o => o.stage === 5 && o.status === 'ok'), o6 = S.orders.filter(o => o.stage >= 6 && o.stage <= 10), led = S.ledger.filter(e => e.cr === 'Vendor Payable').reduce((a, e) => a + e.mmk, 0);
   const pend = S.orders.filter(o => o.stage >= 4 && o.status !== 'declined').reduce((a, o) => a + mmkLines(o) - (o.rel.dep ? mmkLines(o) / 2 : 0) - (o.rel.bal ? mmkLines(o) / 2 : 0), 0);
-  return `<div class="supplier view">${syncBar()}<div style="height:16px"></div><h1>${t('welcome')}, Bagan Master Crafts</h1><p class="muted">Today's work, in one tap each.</p>
+  return `<div class="supplier view">${syncBar()}<div style="height:16px"></div><h1>${t('welcome')}, ${esc(vname())}</h1><p class="muted">Today's work, in one tap each.</p>
   ${todo(o5.length, 'New orders waiting for your answer', '#/s/orders')}${todo(o6.length, 'Orders to confirm, label and pack', '#/s/orders')}${todo(S.orders.filter(o => o.stage === 11).length, 'Packed — waiting for cargo pickup', '#/l/home'.replace('#/l/home', '#/s/orders'))}
   <div class="kpis">${kpi('Paid out', mmk(led), 'To KBZPay / WavePay')}${kpi('Locked in escrow', mmk(pend), 'Releases at stages 11 &amp; 14')}${kpi('Open batch units', liveP().filter(p => p.v === MYV).reduce((a, p) => a + p.quota - p.res, 0), 'Your lacquerware batches')}</div>
   <div class="card"><h3>Latest updates</h3>${feed('SUPPLIER')}</div></div>`;
@@ -571,7 +584,7 @@ V.account = () => {
   <div class="card"><h3>Notifications</h3>${row('viber', 'Viber', 'Order and payment alerts')}${row('sms', 'SMS', 'Fallback on weak connections')}${row('email', 'Email', 'Invoices and summaries')}</div></div>
   <div class="card"><h3>Help &amp; support</h3>${FAQ[r].map(([q, a]) => `<details class="faq"><summary>${q}</summary><p>${a}</p></details>`).join('')}<p class="small muted" style="margin-top:10px">Need a person? Viber / WhatsApp: +95 9 4xx xxx 700 · support@infinityplus.example</p></div>
   <div class="card"><h3>Recent activity</h3>${feed(r, 12)}</div>
-  ${quick([...(r === 'SUPPLIER' ? [['#/s/products', 'box', 'Manage products']] : []), ...(r === 'ADMIN' ? [['#/a/products', 'box', 'Manage products']] : []), ...(r === 'BUYER' ? [['#/invoices', 'list', 'Invoices']] : []), ...(r === 'ADMIN' ? [['#/a/roles', 'shield', 'Role rights matrix']] : []), ['#/lab', 'flask', 'Test lab']])}
+  ${quick([...(r === 'SUPPLIER' ? [['#/s/profile', 'pin', 'Business & warehouses'], ['#/s/products', 'box', 'Manage products']] : []), ...(r === 'ADMIN' ? [['#/a/products', 'box', 'Manage products']] : []), ...(r === 'BUYER' ? [['#/invoices', 'list', 'Invoices']] : []), ...(r === 'ADMIN' ? [['#/a/roles', 'shield', 'Role rights matrix']] : []), ['#/lab', 'flask', 'Test lab']])}
   <button class="btn bad" data-act="logout">${ic('out')} ${t('logout')}</button>`;
 };
 /* ----- Lab ----- */
@@ -598,15 +611,19 @@ V.products = admin => {
   const card = p => `<div class="card"><div style="height:130px;border-radius:12px;overflow:hidden;margin-bottom:10px;background:#eef2f7">${art(p)}</div>
    <div class="row wrap"><b>${esc(p.n)}</b><span class="sp"></span><span class="chip ${p.live ? '' : 'gray'}">${p.live ? 'Live' : 'Not live'}</span></div>
    <div class="small muted">${esc(p.mm || '')}</div><div class="small muted">${esc(VENDORS.find(v => v.id === p.v)?.n || p.v)} · ${esc(p.cat)} · ${esc(p.from)}</div>
-   <div class="row wrap small" style="margin:8px 0"><span class="chip gray">${mmk(p.unit)} / unit</span><span class="chip gray">MOQ ${p.moq}</span><span class="chip gray">${p.res}/${p.quota} reserved</span><span class="chip gray">${p.kg} kg</span></div>
+   <div class="row wrap small" style="margin:8px 0"><span class="chip gray">${mmk(p.unit)} / unit</span><span class="chip gray">MOQ ${p.moq}</span><span class="chip gray">${p.res}/${p.quota} reserved</span><span class="chip gray">${p.kg} kg</span></div><div class="small muted">${ic('pin')} Pickup: ${esc(whLabel(p))}</div>
    <div class="row wrap"><button class="switch ${p.live ? 'on' : ''}" data-act="p-live" data-id="${p.id}" role="switch" aria-checked="${p.live}" aria-label="Live in catalog"></button><span class="small">${p.live ? 'Visible to buyers' : 'Hidden from buyers'}</span><span class="sp"></span><button class="btn sec sm" data-act="p-edit" data-id="${p.id}">Edit</button><button class="btn bad sm" data-act="p-del" data-id="${p.id}">Delete</button></div></div>`;
   return `<a href="${admin ? '#/a/overview' : '#/s/stock'}" class="small">← ${admin ? 'Overview' : 'Stock'}</a><div class="title-row"><h1>Products</h1><span class="sp"></span><button class="btn" data-act="p-edit" data-id="">+ Add product</button></div>
-  <p class="muted">${admin ? 'All suppliers’ batches. Switch a product off to hide it from buyers without deleting it.' : 'Your batches for Bagan Master Crafts. Switch a product off to hide it from buyers without deleting it.'}</p>
+  <p class="muted">${admin ? 'All suppliers’ batches. Switch a product off to hide it from buyers without deleting it.' : 'Your batches for ' + esc(vname()) + '. Switch a product off to hide it from buyers without deleting it.'}</p>
   <div class="kpis">${kpi('Products', list.length, 'in total')}${kpi('Live', live, 'visible to buyers')}${kpi('Not live', list.length - live, 'hidden')}</div>
   <div class="grid g2">${list.map(card).join('') || '<div class="empty card">No products yet. Tap “Add product”.</div>'}</div>`;
 };
 V.sproducts = () => V.products(false);
 V.aproducts = () => V.products(true);
+function whOpts(vid, sel) {
+  const v = vendorOf(vid); if (!v) return '';
+  return v.wh.filter(w => w.active || w.id === sel).map(w => `<option value="${w.id}" ${w.id === sel ? 'selected' : ''}>${esc(w.name)} · ${esc(w.city)}${w.active ? '' : ' (inactive)'}</option>`).join('');
+}
 function prodForm(id) {
   window._pimg = undefined;
   const ex = id ? prod(id) : null, admin = S.role === 'ADMIN';
@@ -616,6 +633,7 @@ function prodForm(id) {
   ${inp('n', 'Product name (English)', 'text', 'maxlength="80" autocomplete="off"')}${inp('mm', 'Product name (Burmese, optional)', 'text', 'maxlength="80" lang="my"')}
   <label class="f" for="pf-cat">Category</label><select class="sel" id="pf-cat">${CATS.map(c => `<option ${p.cat === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
   ${admin ? `<label class="f" for="pf-v">Supplier</label><select class="sel" id="pf-v">${VENDORS.map(v => `<option value="${v.id}" ${p.v === v.id ? 'selected' : ''}>${esc(v.n)}</option>`).join('')}</select>` : ''}
+  <label class="f" for="pf-wh">Pickup warehouse</label><select class="sel" id="pf-wh">${whOpts(p.v, p.wh)}</select><div class="small muted">Where the 3PL collects this batch. <a href="${admin ? '#/a/supplier/' + p.v : '#/s/profile'}" data-act="close">Manage warehouses</a></div>
   ${inp('from', 'Origin (town / region)', 'text', 'maxlength="60"')}
   <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px"><div>${inp('unit', 'Unit price (MMK)', 'number', 'min="1" step="100" inputmode="numeric"')}</div><div>${inp('kg', 'Weight per unit (kg)', 'number', 'min="0.01" step="0.01" inputmode="decimal"')}</div><div>${inp('moq', 'Minimum order (MOQ)', 'number', 'min="1" step="1"')}</div><div>${inp('quota', 'Batch quota (units)', 'number', 'min="1" step="1"')}</div></div>
   ${inp('cut', 'Dispatch cutoff (hours from now)', 'number', 'min="1" step="1"')}${inp('tag', 'Badge text', 'text', 'maxlength="30"')}
@@ -625,6 +643,7 @@ function prodForm(id) {
   <div class="row" style="margin-top:12px"><button class="btn sec" data-act="close">Cancel</button><span class="sp"></span><button class="btn" data-act="p-save" data-id="${id || ''}">${ex ? 'Save changes' : 'Add product'}</button></div>`, 'modal');
 }
 document.addEventListener('change', e => {
+  if (e.target.id === 'pf-v') { const wh = document.getElementById('pf-wh'); if (wh) wh.innerHTML = whOpts(e.target.value, ''); return; }
   if (e.target.id !== 'pf-file' || !e.target.files[0]) return;
   const r = new FileReader(); r.onload = () => { const im = new Image(); im.onload = () => { const s = Math.min(1, 640 / Math.max(im.width, im.height)), c = document.createElement('canvas'); c.width = Math.round(im.width * s); c.height = Math.round(im.height * s); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); window._pimg = c.toDataURL('image/jpeg', .72); const pv = document.getElementById('pf-prev'); if (pv) pv.innerHTML = `<img src="${window._pimg}" alt="" style="width:100%;height:100%;object-fit:cover">`; }; im.src = r.result; }; r.readAsDataURL(e.target.files[0]);
 });
@@ -635,7 +654,8 @@ function saveProduct(id) {
   if (!(unit > 0)) return toast('Enter a unit price'); if (!(kg > 0)) return toast('Enter the weight per unit');
   if (!(moq >= 1)) return toast('MOQ must be at least 1'); if (!(quota >= moq)) return toast('Batch quota must be at least the MOQ');
   if (ex && quota < ex.res) return toast('Quota cannot be below ' + ex.res + ' units already reserved'); if (!(cut >= 1)) return toast('Enter the cutoff in hours');
-  const d = { n, mm: g('mm').value.trim(), cat: g('cat').value, from: g('from').value.trim(), unit, kg, moq, quota, cut, tag: g('tag').value.trim() || 'New', note: g('note').value.trim() || '—', live: g('live').checked, v: admin ? g('v').value : (ex ? ex.v : MYV) };
+  if (!g('wh').value) return toast('Add an active warehouse first');
+  const d = { wh: g('wh').value, n, mm: g('mm').value.trim(), cat: g('cat').value, from: g('from').value.trim(), unit, kg, moq, quota, cut, tag: g('tag').value.trim() || 'New', note: g('note').value.trim() || '—', live: g('live').checked, v: admin ? g('v').value : (ex ? ex.v : MYV) };
   let p = ex;
   if (ex) Object.assign(ex, d); else { p = { id: 'P' + (Math.max(0, ...PRODUCTS.map(x => +x.id.slice(1) || 0)) + 1), res: 0, ...d }; PRODUCTS.push(p); }
   if (window._pimg) p.img = window._pimg; else if (window._pimg === null) delete p.img;
@@ -643,10 +663,51 @@ function saveProduct(id) {
   save(); closeSheet(); toast(ex ? 'Product updated' : 'Product added'); rerender();
 }
 
+/* ---------- Supplier profile & warehouses (supplier + admin on behalf) ---------- */
+V.profile = (vid, admin) => {
+  const v = vendorOf(vid); if (!v) return '';
+  const used = w => PRODUCTS.filter(p => !p.del && p.v === v.id && p.wh === w.id).length, row = (l, x) => `<li><span>${l}</span><b style="text-align:right;max-width:60%;word-break:break-word">${x ? esc(x) : '<span class="muted">—</span>'}</b></li>`;
+  const whCard = w => `<div class="card"><div class="row wrap"><b>${esc(w.name)}</b><span class="sp"></span><span class="chip ${w.active ? '' : 'gray'}">${w.active ? 'Active' : 'Inactive'}</span></div>
+   <ul class="bd" style="margin:6px 0">${row('Address', w.addr)}${row('City / region', w.city)}${row('Contact', w.contact)}${row('Phone', w.phone)}${row('Pickup hours', w.hours)}${row('Products here', String(used(w)))}</ul>
+   <div class="row wrap"><button class="switch ${w.active ? 'on' : ''}" data-act="w-live" data-id="${v.id}" data-w="${w.id}" role="switch" aria-checked="${w.active}" aria-label="Warehouse active"></button><span class="small">${w.active ? 'Available for new listings' : 'Hidden from product form'}</span><span class="sp"></span><button class="btn sec sm" data-act="w-edit" data-id="${v.id}" data-w="${w.id}">Edit</button><button class="btn bad sm" data-act="w-del" data-id="${v.id}" data-w="${w.id}">Delete</button></div></div>`;
+  return `<a href="${admin ? '#/a/vendors' : '#/account'}" class="small">← ${admin ? 'Vendors' : 'Account'}</a><div class="title-row"><h1>Business &amp; warehouses</h1></div>
+  ${admin ? `<div class="card"><span class="chip warn">Editing on behalf of ${esc(v.n)}</span><p class="small muted" style="margin-top:6px">Changes are logged as made by Admin.</p></div>` : ''}
+  <div class="card"><div class="row wrap"><h3>Supplier details</h3><span class="sp"></span><button class="btn sec sm" data-act="v-edit" data-id="${v.id}">Edit details</button></div>
+  <ul class="bd">${row('Business name', v.n)}${row('Contact person', v.contact)}${row('Phone', v.phone)}${row('City / region', v.city)}${row('Business address', v.addr)}${row('KYC', v.kyc + (v.tier !== '—' ? ' · ' + v.tier : ''))}</ul></div>
+  <div class="title-row"><h3>Warehouses (${v.wh.length})</h3><span class="sp"></span><button class="btn" data-act="w-edit" data-id="${v.id}" data-w="">+ Add warehouse</button></div>
+  <div class="grid g2">${v.wh.map(whCard).join('')}</div>`;
+};
+V.sprofile = () => V.profile(MYV, false);
+const ffld = (k, l, val, type = 'text', extra = '') => `<label class="f" for="vf-${k}">${l}</label><input class="inp" id="vf-${k}" type="${type}" value="${esc(val ?? '')}" ${extra}>`;
+function vendorForm(vid) {
+  const v = vendorOf(vid);
+  sheet(`<h3>Edit supplier details</h3><div style="max-height:58vh;overflow:auto;padding:0 4px 8px">${ffld('n', 'Business name', v.n, 'text', 'maxlength="80"')}${ffld('contact', 'Contact person', v.contact, 'text', 'maxlength="60"')}${ffld('phone', 'Phone / Viber', v.phone, 'tel', 'maxlength="30"')}${ffld('city', 'City / region', v.city, 'text', 'maxlength="60"')}${ffld('addr', 'Business address', v.addr, 'text', 'maxlength="140"')}</div>
+  <div class="row" style="margin-top:12px"><button class="btn sec" data-act="close">Cancel</button><span class="sp"></span><button class="btn" data-act="v-save" data-id="${vid}">Save details</button></div>`, 'modal');
+}
+function whForm(vid, wid) {
+  const v = vendorOf(vid), w = wid ? v.wh.find(x => x.id === wid) : { name: '', addr: '', city: '', contact: '', phone: '', hours: '09:00–17:00', active: true };
+  sheet(`<h3>${wid ? 'Edit warehouse' : 'Add warehouse'}</h3><div style="max-height:58vh;overflow:auto;padding:0 4px 8px">${ffld('name', 'Warehouse name', w.name, 'text', 'maxlength="80"')}${ffld('addr', 'Address', w.addr, 'text', 'maxlength="140"')}${ffld('wcity', 'City / region', w.city, 'text', 'maxlength="60"')}${ffld('wcontact', 'Contact person', w.contact, 'text', 'maxlength="60"')}${ffld('wphone', 'Phone', w.phone, 'tel', 'maxlength="30"')}${ffld('hours', 'Pickup hours', w.hours, 'text', 'maxlength="30"')}
+  <label class="row" style="margin-top:14px;gap:10px"><input type="checkbox" id="vf-active" ${w.active ? 'checked' : ''}> <b>Active</b><span class="small muted">Can be chosen when listing products</span></label></div>
+  <div class="row" style="margin-top:12px"><button class="btn sec" data-act="close">Cancel</button><span class="sp"></span><button class="btn" data-act="w-save" data-id="${vid}" data-w="${wid || ''}">${wid ? 'Save warehouse' : 'Add warehouse'}</button></div>`, 'modal');
+}
+const vg = k => document.getElementById('vf-' + k).value.trim();
+const editLog = (what) => ev(S, S.role === 'ADMIN' ? 'admin' : 'vendor', (S.role === 'ADMIN' ? 'Admin (on behalf) · ' : '') + what);
+function saveVendor(vid) {
+  const v = vendorOf(vid); if (!vg('n')) return toast('Business name is required'); if (!vg('city')) return toast('City is required');
+  Object.assign(v, { n: vg('n'), contact: vg('contact'), phone: vg('phone'), city: vg('city'), addr: vg('addr') });
+  editLog(`Updated supplier details · ${v.n}`); save(); closeSheet(); toast('Details saved'); rerender();
+}
+function saveWh(vid, wid) {
+  const v = vendorOf(vid); if (!vg('name')) return toast('Warehouse name is required'); if (!vg('wcity')) return toast('City is required');
+  const d = { name: vg('name'), addr: vg('addr'), city: vg('wcity'), contact: vg('wcontact'), phone: vg('wphone'), hours: vg('hours'), active: document.getElementById('vf-active').checked };
+  if (wid) Object.assign(v.wh.find(x => x.id === wid), d); else v.wh.push({ id: v.id + '-W' + (Math.max(0, ...v.wh.map(x => +x.id.split('-W')[1] || 0)) + 1), ...d });
+  editLog(`${wid ? 'Updated' : 'Added'} warehouse "${d.name}" · ${v.n}`); save(); closeSheet(); toast(wid ? 'Warehouse saved' : 'Warehouse added'); rerender();
+}
+
 /* ---------- Burmese page titles ---------- */
 const PAGE_MM = {
   catalog: ['ကတ်တလောက်', 'အင်းလေးပိုးနှင့် ပုဂံယွန်းထည်'], cart: ['ကြိုတင်မှာယူမှု'], orders: ['အော်ဒါများ'], cargo: ['ကုန်စည်ခြေရာခံခြင်း'], lab: ['အသုံးပြုသူ စမ်းသပ်မှုနှင့် အခန်းကဏ္ဍ ပုံစံတူ'],
-  's/products': ['ကုန်ပစ္စည်းများ'], 'a/products': ['ကုန်ပစ္စည်းများ'], 'a/options': ['မှာယူမှု ရွေးချယ်စရာများ'],
+  's/profile': ['လုပ်ငန်းနှင့် ကုန်လှောင်ရုံများ'], 'a/supplier': ['လုပ်ငန်းနှင့် ကုန်လှောင်ရုံများ'], 's/products': ['ကုန်ပစ္စည်းများ'], 'a/products': ['ကုန်ပစ္စည်းများ'], 'a/options': ['မှာယူမှု ရွေးချယ်စရာများ'],
   's/orders': ['အော်ဒါများ'], 's/stock': ['စတော့'], 's/payouts': ['ငွေထုတ်ယူမှု'],
   'l/manifest': ['ကုန်စည် မန်နီဖက်စ်'], 'l/transit': ['ပို့ဆောင်ဆဲ'], 'l/pod': ['ပို့ဆောင်ပြီးကြောင်း အထောက်အထား'],
   'a/overview': ['လုပ်ငန်းလည်ပတ်မှု အနှစ်ချုပ်'], 'a/fx': ['ငွေလွှဲနှုန်းနှင့် အမြတ်ခွန်အင်ဂျင်'], 'a/vendors': ['ကုန်သည် စိစစ်ခြင်းနှင့် KYC'], 'a/escrow': ['အာမခံငွေနှင့် စာရင်းဇယား'], 'a/roles': ['အခန်းကဏ္ဍအလိုက် ခွင့်ပြုချက်'],
@@ -678,7 +739,7 @@ const MM = {
   'All batches': 'အားလုံး', 'All': 'အားလုံး', 'Textiles': 'ပိုးထည်အထည်', 'Lacquerware': 'ယွန်းထည်', 'Tea & Coffee': 'လက်ဖက်နှင့် ကော်ဖီ', 'Gems & Jewelry': 'ကျောက်မျက်နှင့် လက်ဝတ်ရတနာ', 'Wellness': 'ကျန်းမာရေး',
   'Consignment': 'အပ်နှံရောင်းချမှု', 'Consignment terms': 'အပ်နှံစည်းမျဉ်းများ', 'Order type': 'မှာယူမှုပုံစံ', 'Report sales': 'ရောင်းရမှု ပို့ရန်', 'Settle now': 'ယခု ပေးချေမည်', 'Extend +30 days': 'ရက် ၃၀ တိုးမည်', 'Buy out remainder': 'ကျန်ပစ္စည်း ဝယ်မည်', 'Return unsold': 'မရောင်းရသည် ပြန်ပို့', 'Send settlement reminder': 'ပေးချေရန် သတိပေးမည်', 'Report & settle': 'ပို့၍ ပေးချေမည်',
   'Order options': 'မှာယူမှု ရွေးချယ်စရာများ', 'Pay later': 'နောက်မှ ပေးချေမည်', 'Deliver later': 'နောက်မှ ပို့ဆောင်မည်', 'Payment': 'ငွေပေးချေမှု', 'Delivery': 'ပို့ဆောင်မှု', 'Flexible terms': 'ပြောင်းလွယ်စည်းမျဉ်း', 'Pay later terms': 'နောက်မှပေးချေမှု စည်းမျဉ်း', 'Pay now': 'ယခု ပေးမည်', 'Release hold now': 'ယခု ထုတ်ပို့ရန် ဖွင့်မည်', 'Save fees': 'ကြေးများ သိမ်းမည်', 'Reset to defaults': 'မူလအတိုင်း ပြန်ထားမည်',
-  'Send for quality check': 'အရည်အသွေးစစ်ရန် ပို့မည်', 'Pass quality check': 'အရည်အသွေး အောင်မြင်', 'Quality check queue': 'အရည်အသွေးစစ်ဆေးရန် စာရင်း', 'Pass': 'အောင်', 'Fail': 'ကျ', 'Manage products': 'ကုန်ပစ္စည်း စီမံရန်', '+ Add product': '+ ကုန်ပစ္စည်း ထည့်ရန်', 'Add product': 'ကုန်ပစ္စည်း ထည့်ရန်', 'Edit product': 'ကုန်ပစ္စည်း ပြင်ရန်', 'Edit': 'ပြင်မည်', 'Delete': 'ဖျက်မည်', 'Save changes': 'ပြောင်းလဲမှု သိမ်းမည်', 'Delete product?': 'ကုန်ပစ္စည်း ဖျက်မလား?', 'Remove photo': 'ဓာတ်ပုံ ဖယ်ရှားမည်', 'Products': 'ကုန်ပစ္စည်းများ', 'Pickup preparation':'ပစ္စည်းလာယူရန် ပြင်ဆင်မှု', 'Cargo moving': 'ကုန်စည် သွားနေ', 'Needs attention': 'စစ်ဆေးရန်လို',
+  'Send for quality check': 'အရည်အသွေးစစ်ရန် ပို့မည်', 'Pass quality check': 'အရည်အသွေး အောင်မြင်', 'Quality check queue': 'အရည်အသွေးစစ်ဆေးရန် စာရင်း', 'Pass': 'အောင်', 'Fail': 'ကျ', 'Business & warehouses': 'လုပ်ငန်းနှင့် ကုန်လှောင်ရုံများ', 'Warehouses': 'ကုန်လှောင်ရုံများ', 'Supplier details': 'ကုန်သည် အချက်အလက်', 'Edit details': 'အချက်အလက် ပြင်မည်', '+ Add warehouse': '+ ကုန်လှောင်ရုံ ထည့်ရန်', 'Add warehouse': 'ကုန်လှောင်ရုံ ထည့်ရန်', 'Edit warehouse': 'ကုန်လှောင်ရုံ ပြင်ရန်', 'Save details': 'အချက်အလက် သိမ်းမည်', 'Save warehouse': 'ကုန်လှောင်ရုံ သိမ်းမည်', 'Delete warehouse?': 'ကုန်လှောင်ရုံ ဖျက်မလား?', 'Profile & warehouses': 'ပရိုဖိုင်နှင့် ကုန်လှောင်ရုံ', 'Manage products': 'ကုန်ပစ္စည်း စီမံရန်', '+ Add product': '+ ကုန်ပစ္စည်း ထည့်ရန်', 'Add product': 'ကုန်ပစ္စည်း ထည့်ရန်', 'Edit product': 'ကုန်ပစ္စည်း ပြင်ရန်', 'Edit': 'ပြင်မည်', 'Delete': 'ဖျက်မည်', 'Save changes': 'ပြောင်းလဲမှု သိမ်းမည်', 'Delete product?': 'ကုန်ပစ္စည်း ဖျက်မလား?', 'Remove photo': 'ဓာတ်ပုံ ဖယ်ရှားမည်', 'Products': 'ကုန်ပစ္စည်းများ', 'Pickup preparation':'ပစ္စည်းလာယူရန် ပြင်ဆင်မှု', 'Cargo moving': 'ကုန်စည် သွားနေ', 'Needs attention': 'စစ်ဆေးရန်လို',
   'Home': 'ပင်မ', 'Catalog': 'ကတ်တလောက်', 'Orders': 'အော်ဒါများ', 'Cargo': 'ကုန်စည်', 'Account': 'အကောင့်', 'Stock': 'စတော့', 'Payouts': 'ငွေထုတ်', 'Manifest': 'မန်နီဖက်စ်', 'POD': 'POD', 'Overview': 'အနှစ်ချုပ်', 'FX Engine': 'FX', 'Vendors': 'ကုန်သည်များ', 'Escrow': 'အာမခံငွေ', 'Test Lab': 'စမ်းသပ်ခန်း',
   /* section titles */
   'Landed cost': 'ရောက်ရှိကုန်ကျစရိတ်', 'Items': 'ကုန်ပစ္စည်းများ', 'Payment slip': 'ငွေပေးချေ ဘောင်ချာ', 'Order journey · 14 stages': 'အော်ဒါ ခရီးစဉ် · အဆင့် ၁၄', 'Weight intake & consolidation': 'အလေးချိန် မှတ်သားခြင်းနှင့် ပေါင်းစည်းခြင်း',
@@ -715,13 +776,13 @@ function localizeMm(root) {
 
 /* ---------- router / chrome ---------- */
 function route() {
-  const h = location.hash || '#/login', [, a, b] = h.split('/');
+  const h = location.hash || '#/login', [, a, b, c] = h.split('/');
   if (!S.role && h !== '#/lab') { if (h !== '#/login') { location.hash = '#/login'; return; } }
   let html;
   const map = { home: V.bhome, account: V.account, invoices: V.invoices, login: V.login, catalog: V.catalog, product: () => V.product(b), cart: V.cart, orders: V.orders, order: () => V.order(b), cargo: V.cargo, lab: V.lab };
-  if (a === 's') html = { home: V.shome, orders: V.sorders, stock: V.sstock, payouts: V.spayouts, products: V.sproducts }[b]?.();
+  if (a === 's') html = { home: V.shome, orders: V.sorders, stock: V.sstock, payouts: V.spayouts, products: V.sproducts, profile: V.sprofile }[b]?.();
   else if (a === 'l') html = { home: V.lhome, manifest: V.manifest, transit: V.transit, pod: V.podlist }[b]?.();
-  else if (a === 'a') html = { overview: V.aoverview, orders: V.aorders, fx: V.afx, vendors: V.avendors, escrow: V.aescrow, roles: V.aroles, options: V.aoptions, products: V.aproducts }[b]?.();
+  else if (a === 'a') html = { overview: V.aoverview, orders: V.aorders, fx: V.afx, vendors: V.avendors, escrow: V.aescrow, roles: V.aroles, options: V.aoptions, products: V.aproducts, supplier: () => V.profile(c, true) }[b]?.();
   else html = map[a]?.();
   const bo = ['home', 'catalog', 'product', 'cart', 'orders', 'cargo', 'invoices'];
   if (S.role && ((a === 's' && S.role !== 'SUPPLIER') || (a === 'l' && S.role !== 'DELIVERY') || (a === 'a' && S.role !== 'ADMIN') || (bo.includes(a) && S.role !== 'BUYER'))) { location.hash = ROLES[S.role].home; return; }
@@ -768,6 +829,13 @@ document.addEventListener('click', e => {
     case 'opt-ext': { opts().cons.extMax = +v; save(); rerender(); break; }
     case 'opt-fee': { const O = opts(); document.querySelectorAll('.ofee').forEach(x => { const n = parseFloat(x.value); if (n >= 0 && n <= 30) O[x.dataset.g].fee[x.dataset.d] = n; }); ev(S, 'admin', 'Option fees updated'); save(); toast('Fees saved'); rerender(); break; }
     case 'opt-reset': S.opts = null; opts(); ev(S, 'admin', 'Order options reset to defaults'); save(); toast('Defaults restored'); rerender(); break;
+    case 'v-edit': vendorForm(id); break;
+    case 'v-save': saveVendor(id); break;
+    case 'w-edit': whForm(id, el.dataset.w); break;
+    case 'w-save': saveWh(id, el.dataset.w); break;
+    case 'w-live': { const w = vendorOf(id).wh.find(x => x.id === el.dataset.w); w.active = !w.active; editLog(`Warehouse "${w.name}" ${w.active ? 'activated' : 'deactivated'}`); save(); rerender(); break; }
+    case 'w-del': { const vd = vendorOf(id), w = vd.wh.find(x => x.id === el.dataset.w), n = PRODUCTS.filter(p => !p.del && p.v === id && p.wh === w.id).length; if (vd.wh.length <= 1) return toast('Keep at least one warehouse'); if (n) return toast(`Move ${n} product(s) to another warehouse first`); sheet(`<h3>Delete warehouse?</h3><p style="margin:8px 0"><b>${esc(w.name)}</b> will be removed. This cannot be undone.</p><div class="row"><button class="btn sec" data-act="close">Cancel</button><span class="sp"></span><button class="btn bad" data-act="w-del-ok" data-id="${id}" data-w="${w.id}">Delete</button></div>`, 'modal'); break; }
+    case 'w-del-ok': { const vd = vendorOf(id), w = vd.wh.find(x => x.id === el.dataset.w); vd.wh = vd.wh.filter(x => x !== w); editLog(`Deleted warehouse "${w.name}" · ${vd.n}`); save(); closeSheet(); toast('Warehouse deleted'); rerender(); break; }
     case 'p-edit': prodForm(id); break;
     case 'p-save': saveProduct(id); break;
     case 'p-noimg': window._pimg = null; { const pv = $('#pf-prev'); if (pv) pv.innerHTML = ''; } break;
