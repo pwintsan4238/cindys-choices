@@ -76,7 +76,7 @@ const OPT_DEF = { cons: { on: true, dep: 25, term: 60, settle: 'sold', unsold: '
 const opts = () => { if (!S.opts) S.opts = JSON.parse(JSON.stringify(OPT_DEF)); const c = S.opts.cons; if (c.dep === undefined) Object.assign(c, { dep: 25, term: 60, settle: 'sold', unsold: 'return' }); return S.opts; };
 const consFee = dep => ((typeof S !== 'undefined' && S && S.opts ? S.opts.cons.fee : CONS_FEE)[dep]) ?? 4;
 const held = o => !!(o.defer && !o.defer.released && o.defer.until > Date.now());
-function laterTerms(items, cur, days) { const c = calc(items, cur), feePct = opts().later.fee[days] ?? 3, feeMMK = c.totalMMK * feePct / 100; return { c, feePct, feeMMK, grossMMK: c.totalMMK + feeMMK }; }
+function laterTerms(items, cur, days) { const c = calc(items, cur), feePct = ((typeof S !== 'undefined' && S && S.opts ? S.opts.later.fee : OPT_DEF.later.fee)[days]) ?? 3, feeMMK = c.totalMMK * feePct / 100; return { c, feePct, feeMMK, grossMMK: c.totalMMK + feeMMK }; }
 function tagChips(o) { return (o.cons ? '<span class="chip ai">Consignment</span>' : '') + (o.later ? '<span class="chip ai">Pay later</span>' : '') + (o.defer ? `<span class="chip ${held(o) ? 'warn' : 'gray'}">${held(o) ? 'Deliver later' : 'Dispatch released'}</span>` : ''); }
 function consTerms(items, cur, d) {
   const c = calc(items, cur), feePct = consFee(d.dep), feeMMK = c.totalMMK * feePct / 100, grossMMK = c.totalMMK + feeMMK;
@@ -95,6 +95,43 @@ function fundLedger(s, o, ts) {
   if (c.depMMK > 0) postLedger(s, o, 'Buyer Funds', 'Escrow Vault', c.depMMK, 'Consignment deposit ' + c.dep + '%', ts);
   postLedger(s, o, 'Platform Float', 'Escrow Vault', Math.round(o.calc.totalMMK - c.depMMK), o.cons ? 'Platform consignment advance' : 'Platform pay-later advance', ts);
 }
+
+function seedLedger(s, o) {
+  if (o.stage >= 4) fundLedger(s, o, o.ts + 4 * H);
+  if (o.rel.dep) postLedger(s, o, 'Escrow Vault', 'Vendor Payable', Math.round(o.calc.artisan / 2), 'Deposit 50% · stage 11', o.ts + 11 * H);
+  if (o.rel.bal) postLedger(s, o, 'Escrow Vault', 'Vendor Payable', Math.round(o.calc.artisan / 2), 'Balance 50% · stage 14', o.ts + 14 * H);
+  if (o.later && o.later.paid) postLedger(s, o, 'Buyer Funds', 'Platform Float', o.later.grossMMK, 'Pay-later settlement', o.ts + 15 * H);
+  if (o.cons) { const c = o.cons, st = consStatus(o); if (st.sold) { postLedger(s, o, 'Buyer Funds', 'Platform Float', c.paid, 'Consignment settlement · sales report', o.ts + 16 * H); } }
+}
+/* 10 sample orders across suppliers, currencies and stages (ids O-2001 … O-2010) */
+function sampleOrders() {
+  const DEST = { THB: 'Bangkok · Lat Krabang', TWD: 'Taipei · TPE', USD: 'Hong Kong · HKG', MMK: 'Yangon · Hub' };
+  const bo = (n, ago, buyer, items, stage, cur, x = {}) => {
+    const id = 'O-' + (2000 + n), o = { id, ts: NOW0 - ago * H, buyer, cur, rail: CUR[cur].rail, items, stage, status: 'ok', slip: { ref: 'SM' + (770000 + n * 31), conf: 96.2, ts: NOW0 - ago * H + 6e5, ok: true }, rel: { dep: false, bal: false }, ms: [] };
+    o.calc = calc(items, cur);
+    for (let k = 1; k <= stage; k++) o.ms.push({ s: k, ts: o.ts + k * 36e5 * 2 });
+    if (stage >= 11) o.rel.dep = true;
+    if (stage >= 12) o.ship = { mode: cur === 'TWD' ? 'Air · Yangon → Taipei (TPE)' : 'Land · Mae Sot', mawb: 'CC-' + (cur === 'TWD' ? 'TPE' : 'MS') + '-' + (2600 + n), from: 'Yangon Hub', to: DEST[cur], gross: +(o.calc.kg * 1.05).toFixed(1), vol: +(o.calc.kg * 1.25).toFixed(1), depart: o.ts + 8 * H, eta: o.ts + 20 * H, st: stage >= 13 ? 'Customs cleared' : 'In transit' };
+    if (stage >= 14) { o.rel.bal = true; o.pod = { by: 'Receiver ' + n, ts: o.ts + 24 * H, geo: '13.7563, 100.5018' }; }
+    if (x.cons) { const t = consTerms(items, cur, { dep: x.cons.dep }), st0 = o.ts + 24 * H; o.cons = { dep: x.cons.dep, term: 60, settle: 'sold', unsold: 'return', feePct: t.feePct, grossMMK: Math.round(t.grossMMK), depMMK: t.depMMK, sold: x.cons.sold, paid: 0, disc: 0, ext: 0, start: st0, due: st0 + 60 * 24 * H, closed: false }; const s0 = consStatus(o); o.cons.paid = s0.due; }
+    if (x.later) { const t = laterTerms(items, cur, 30); o.later = { days: 30, feePct: t.feePct, grossMMK: Math.round(t.grossMMK), depMMK: 0, due: stage >= 14 ? o.ts + 24 * H + 30 * 24 * H : null, paid: !!x.later.paid }; }
+    if (x.defer) o.defer = { days: 30, until: NOW0 + 10 * 24 * H, released: false };
+    return o;
+  };
+  const SB = 'Silom Artisan Gallery', TP = 'Taipei Craft House', CM = 'Chiang Mai Gourmet Market', BK = 'Bangkok Snack Bar', YD = 'Yangon Duty Free';
+  return [
+    bo(1, 500, SB, [{ p: 'S7', q: 60 }, { p: 'S3', q: 50 }, { p: 'S19', q: 50 }], 14, 'THB'),
+    bo(2, 800, TP, [{ p: 'S1', q: 40 }, { p: 'S2', q: 40 }, { p: 'S13', q: 40 }], 14, 'TWD', { cons: { dep: 10, sold: { S1: 30, S2: 20, S13: 10 } } }),
+    bo(3, 200, CM, [{ p: 'S26', q: 30 }, { p: 'S27', q: 20 }, { p: 'S16', q: 20 }], 13, 'USD'),
+    bo(4, 100, BK, [{ p: 'S9', q: 40 }, { p: 'S8', q: 30 }, { p: 'S11', q: 60 }], 12, 'THB', { later: {} }),
+    bo(5, 1000, YD, [{ p: 'S29', q: 24 }, { p: 'S12', q: 30 }, { p: 'S6', q: 40 }], 14, 'MMK'),
+    bo(6, 50, SB, [{ p: 'S25', q: 40 }, { p: 'S22', q: 40 }], 11, 'THB', { defer: true }),
+    bo(7, 30, TP, [{ p: 'S14', q: 24 }, { p: 'S15', q: 30 }, { p: 'S20', q: 20 }], 8, 'TWD'),
+    bo(8, 350, CM, [{ p: 'S21', q: 30 }, { p: 'S24', q: 20 }, { p: 'S23', q: 24 }], 14, 'USD'),
+    bo(9, 6, BK, [{ p: 'S10', q: 50 }, { p: 'S17', q: 40 }], 5, 'THB'),
+    bo(10, 650, TP, [{ p: 'S5', q: 30 }, { p: 'S18', q: 30 }, { p: 'S30', q: 50 }, { p: 'S4', q: 50 }], 14, 'TWD', { later: { paid: true } })
+  ];
+}
 function seedOrders() {
   const mk = (id, ago, items, stage, cur = 'THB') => {
     const o = { id, ts: NOW0 - ago * H, buyer: 'Silom Artisan Gallery', cur, rail: CUR[cur].rail, items, stage, status: 'ok', slip: { ref: 'PP' + (880200 + +id.slice(-2) * 17), conf: 97.4, ts: NOW0 - ago * H + 6e5, ok: true }, rel: { dep: false, bal: false }, ms: [] };
@@ -107,28 +144,61 @@ function seedOrders() {
   };
   const co = mk('O-1039', 900, [{ p: 'P2', q: 12 }], 14), ct = consTerms(co.items, co.cur, { dep: 25 }), st0 = co.ts + 20 * H;
   co.cons = { dep: 25, term: 60, settle: 'sold', unsold: 'return', feePct: ct.feePct, grossMMK: Math.round(ct.grossMMK), depMMK: ct.depMMK, sold: { P2: 5 }, paid: 0, disc: 0, ext: 0, start: st0, due: st0 + 60 * 24 * H, closed: false };
-  return [mk('O-1041', 5, [{ p: 'P1', q: 20 }, { p: 'P3', q: 24 }], 5), mk('O-1040', 70, [{ p: 'P2', q: 12 }], 11), mk('O-1038', 160, [{ p: 'P6', q: 30 }], 13), mk('O-1030', 400, [{ p: 'P4', q: 40 }], 14, 'THB'), co, mk('O-1037', 600, [{ p: 'F1', q: 30 }, { p: 'F2', q: 20 }], 14, 'TWD'), mk('O-1036', 300, [{ p: 'F3', q: 24 }, { p: 'P5', q: 5 }], 13, 'USD')];
+  return [mk('O-1041', 5, [{ p: 'P1', q: 20 }, { p: 'P3', q: 24 }], 5), mk('O-1040', 70, [{ p: 'P2', q: 12 }], 11), mk('O-1038', 160, [{ p: 'P6', q: 30 }], 13), mk('O-1030', 400, [{ p: 'P4', q: 40 }], 14, 'THB'), co, mk('O-1037', 600, [{ p: 'F1', q: 30 }, { p: 'F2', q: 20 }], 14, 'TWD'), mk('O-1036', 300, [{ p: 'F3', q: 24 }, { p: 'P5', q: 5 }], 13, 'USD'), ...sampleOrders()];
 }
 function seed() {
   const s = { v: 1, role: null, lang: 'en', cur: 'THB', fx: JSON.parse(JSON.stringify(SEED_FX)), orders: seedOrders(), cart: [], vendors: VENDORS.map(v => ({ ...v })), disputes: [{ id: 'D-77', order: 'O-1038', by: 'Buyer', why: '2 of 30 longyi sets arrived with loose threads', open: true, amt: 270000 }], ledger: [], events: [], q: [], offline: false, nextOrder: 1042, review: [] };
-  s.orders.forEach(o => { if (o.stage >= 4) fundLedger(s, o, o.ts + 4 * H); if (o.rel.dep) postLedger(s, o, 'Escrow Vault', 'Vendor Payable', Math.round(o.calc.artisan / 2), 'Deposit 50% · stage 11', o.ts + 11 * H); if (o.rel.bal) postLedger(s, o, 'Escrow Vault', 'Vendor Payable', Math.round(o.calc.artisan / 2), 'Balance 50% · stage 14', o.ts + 14 * H); });
+  s.orders.forEach(o => seedLedger(s, o));
   ev(s, 'sys', 'Marketplace seeded · 4 sample orders');
   return s;
 }
 
 /* ---------- state ---------- */
 let S;
-const PRODUCTS0 = JSON.stringify(PRODUCTS);
+
+/* ---------- Sample data: 5 Myanmar snack suppliers + 30 snack products ---------- */
+VENDORS.push(
+  { id: 'V7', n: 'Mandalay Golden Snacks', city: 'Mandalay', kyc: 'verified', tier: 'Gold', docs: 'NRC · FDA · MSME' },
+  { id: 'V8', n: 'Yangon Crunch Co.', city: 'Yangon', kyc: 'verified', tier: 'Silver', docs: 'NRC · FDA' },
+  { id: 'V9', n: 'Shan Hills Sweets', city: 'Taunggyi', kyc: 'verified', tier: 'Silver', docs: 'NRC · Organic cert' },
+  { id: 'V10', n: 'Ayeyarwady Delta Foods', city: 'Pathein', kyc: 'verified', tier: 'Silver', docs: 'NRC · FDA' },
+  { id: 'V11', n: 'Bagan Palm Treats', city: 'Bagan', kyc: 'verified', tier: 'Gold', docs: 'NRC · MSME · FDA' }
+);
+(() => {
+  const SW = 'Snacks & Sweets', SP = 'Spices & Condiments', DF = 'Dried Fruits & Nuts', TC = 'Tea & Coffee';
+  /* [name, burmese, category, supplier, unit MMK, kg, moq, quota, reserved, cutoff h, town, badge] */
+  const T = [
+    ['Mandalay Peanut Brittle', '', SW, 'V7', 18000, .5, 40, 300, 120, 36, 'Mandalay', 'Best Seller'], ['Sesame Ball Brittle (Hnan Lone)', 'နှမ်းလုံး', SW, 'V7', 16000, .4, 40, 280, 95, 48, 'Mandalay', 'Crunchy'],
+    ['Fried Broad Beans (Pe Gyi Jaw)', 'ပဲကြီးကြော်', SW, 'V7', 12000, .6, 50, 400, 210, 30, 'Mandalay', 'Street Classic'], ['Roasted Chickpea Crunch', '', SW, 'V7', 11000, .5, 50, 350, 140, 40, 'Sagaing', 'High Protein'],
+    ['Palm Jaggery Candy', 'ထန်းလျက်သကြားလုံး', SW, 'V7', 22000, .6, 30, 200, 70, 55, 'Mandalay', 'Natural Sweet'], ['Tamarind Candy Strips', 'မန်ကျည်းသီးချိုချဉ်', SW, 'V7', 14000, .4, 40, 250, 60, 62, 'Mandalay', 'Sweet & Sour'],
+    ['Crispy Fish Crackers', 'ငါးကြွပ်ကြော်', SW, 'V8', 15000, .3, 60, 500, 260, 28, 'Yangon', 'Top Seller'], ['Balachaung Fried Shrimp Relish (jar)', 'ဘာလာချောင်', SP, 'V8', 28000, .5, 30, 220, 85, 50, 'Yangon', 'Chef Favourite'],
+    ['Mohinga Spice Mix (10 sachets)', 'မုန့်ဟင်းခါး', SP, 'V8', 24000, .3, 40, 260, 110, 45, 'Yangon', 'Ready to Cook'], ['Rice Cracker (Mont Let Saung)', '', SW, 'V8', 13000, .35, 50, 360, 90, 52, 'Yangon', 'Festival Treat'],
+    ['Prawn Chips', 'ပုဇွန်ကြွပ်', SW, 'V8', 17000, .3, 60, 420, 180, 34, 'Yangon', 'Crunchy'], ['Roselle Hibiscus Tea (box of 30)', '', TC, 'V8', 26000, .25, 30, 200, 55, 66, 'Yangon', 'Caffeine Free'],
+    ['Shan Tofu Crisps', '', SW, 'V9', 14000, .35, 40, 280, 100, 38, 'Taunggyi', 'Plant Based'], ['Dried Persimmon Slices', '', DF, 'V9', 32000, .4, 24, 160, 44, 70, 'Taunggyi', 'Seasonal'],
+    ['Dried Tamarind Pulp Block', 'မန်ကျည်းသီးခြောက်', DF, 'V9', 19000, .5, 30, 210, 65, 58, 'Taunggyi', 'Tangy'], ['Shan Walnut & Honey Cluster', '', DF, 'V9', 48000, .45, 20, 120, 38, 74, 'Taunggyi', 'Premium'],
+    ['Sesame Rice Crisp', '', SW, 'V9', 15500, .3, 40, 240, 82, 46, 'Taunggyi', 'Gluten Free'], ['Shan Green Tea Biscuits', '', SW, 'V9', 21000, .4, 30, 180, 40, 80, 'Taunggyi', 'Tea Infused'],
+    ['Pathein Banana Chips', 'ငှက်ပျောသီးကြော်', SW, 'V10', 13500, .35, 50, 380, 150, 32, 'Pathein', 'Kids Favourite'], ['Dried Prawn Snack', '', SW, 'V10', 36000, .3, 20, 150, 49, 60, 'Pathein', 'Umami'],
+    ['Toasted Coconut Chips', '', DF, 'V10', 20000, .3, 30, 220, 72, 56, 'Pathein', 'Toasted'], ['Palm Sugar Crystals', 'ထန်းလျက်', SP, 'V10', 18000, .5, 40, 300, 115, 44, 'Pathein', 'Unrefined'],
+    ['Chili Garlic Fish Floss', '', SP, 'V10', 30000, .25, 24, 160, 52, 68, 'Pathein', 'Spicy'], ['Lotus Seed Crunch', '', DF, 'V10', 38000, .3, 20, 140, 33, 72, 'Pathein', 'Rare'],
+    ['Bagan Toddy Palm Candy', '', SW, 'V11', 17500, .4, 40, 260, 96, 42, 'Bagan', 'Heritage'], ['Dried Mango Strips', 'သရက်သီးခြောက်', DF, 'V11', 29000, .35, 30, 240, 120, 50, 'Bagan', 'Naturally Sweet'],
+    ['Roasted Cashew Nuts (Myeik style)', '', DF, 'V11', 55000, .5, 20, 150, 70, 64, 'Bagan', 'Premium'], ['Dried Jackfruit Chips', '', DF, 'V11', 31000, .3, 30, 200, 58, 54, 'Bagan', 'Tropical'],
+    ['Pickled Tea Leaf (Lahpet Thoke) Kit', 'လက်ဖက်သုပ်', SW, 'V11', 34000, .8, 24, 180, 99, 46, 'Bagan', 'National Dish'], ['Jaggery Peanut Bars', '', SW, 'V11', 12500, .45, 50, 340, 105, 38, 'Bagan', 'Energy Bar']
+  ];
+  T.forEach((t, i) => PRODUCTS.push({ id: 'S' + (i + 1), n: t[0], mm: t[1], cat: t[2], v: t[3], unit: t[4], kg: t[5], moq: t[6], quota: t[7], res: t[8], cut: t[9], from: t[10], note: 'Sample Myanmar snack · small-batch, export packed', tag: t[11], country: 'Myanmar' }));
+})();
+const PRODUCTS0 = JSON.stringify(PRODUCTS), VENDORS0 = JSON.stringify(VENDORS);
 function defaultWh(v) {
   const w = (n, addr, city, contact, phone, hrs, i) => ({ id: v.id + '-W' + i, name: n, addr, city, contact, phone, hours: hrs, active: true });
   return v.id === 'V1' ? [w('Bagan Main Workshop', 'Myinkaba village road', 'Bagan', 'U Kyaw Zin', '+95 9 7xx xxx 442', '08:00–17:00', 1), w('Yangon Consolidation Depot', 'Hlaing Thar Yar Industrial Zone', 'Yangon', 'Daw Mya', '+95 9 7xx xxx 443', '09:00–18:00', 2)] : [w(v.city + ' warehouse', '', v.city, '', '', '09:00–17:00', 1)];
 }
 function syncProducts() {
   if (!S.products) S.products = JSON.parse(PRODUCTS0).map(p => ({ ...p, live: true }));
-  if ((S.pv || 0) < 2) { JSON.parse(PRODUCTS0).filter(p => p.id[0] === 'F' && !S.products.some(x => x.id === p.id)).forEach(p => S.products.push({ ...p, live: true })); S.pv = 2; }
+  let addSample = false;
+  if ((S.pv || 0) < 3) { JSON.parse(PRODUCTS0).filter(p => !S.products.some(x => x.id === p.id)).forEach(p => S.products.push({ ...p, live: true })); JSON.parse(VENDORS0).filter(v => !S.vendors.some(x => x.id === v.id)).forEach(v => S.vendors.push(v)); S.pv = 3; addSample = true; }
   S.products.forEach(p => { if (!p.country) p.country = 'Myanmar'; });
   PRODUCTS = S.products; VENDORS = S.vendors;
   VENDORS.forEach(v => { if (!v.cons) { const c = opts().cons; v.cons = { on: true, dep: c.dep, term: c.term, settle: c.settle, unsold: c.unsold, by: 'admin' }; } if (!v.wh) v.wh = defaultWh(v); if (v.addr === undefined) { v.addr = ''; v.phone = v.phone || ''; v.contact = v.contact || ''; } });
+  if (addSample) sampleOrders().filter(o => !S.orders.some(x => x.id === o.id)).forEach(o => { S.orders.push(o); seedLedger(S, o); });
   PRODUCTS.forEach(p => { if (!p.wh) { const v = VENDORS.find(x => x.id === p.v); if (v) p.wh = (p.id === 'P8' && v.wh[1] ? v.wh[1] : v.wh[0]).id; } });
 }
 const vendorOf = id => VENDORS.find(v => v.id === id);
@@ -384,8 +454,8 @@ function orderCard(o, link = true) {
 let OTAB = 'active';
 V.orders = () => {
   const f = { active: o => o.stage < 14 && o.status !== 'declined', delivered: o => o.stage === 14, review: o => o.status === 'review' || o.status === 'dispute' || o.status === 'declined' };
-  const flt = o => orderOK(fsx('orders'), o, S.cur), list = S.orders.filter(f[OTAB]).filter(flt);
-  return `<h1>${t('orders')}</h1>${fbar('orders', { country: 'order', cur: S.cur })}<div class="seg" role="tablist">${[['active', 'Active'], ['delivered', 'Delivered'], ['review', 'Attention']].map(([k, n]) => `<button class="${OTAB === k ? 'on' : ''}" data-act="otab" data-v="${k}">${n} (${S.orders.filter(f[k]).filter(flt).length})</button>`).join('')}</div>
+  const flt = o => orderOK(fsx('orders'), o, S.cur), list = myOrders().filter(f[OTAB]).filter(flt);
+  return `<h1>${t('orders')}</h1>${fbar('orders', { country: 'order', cur: S.cur })}<div class="seg" role="tablist">${[['active', 'Active'], ['delivered', 'Delivered'], ['review', 'Attention']].map(([k, n]) => `<button class="${OTAB === k ? 'on' : ''}" data-act="otab" data-v="${k}">${n} (${myOrders().filter(f[k]).filter(flt).length})</button>`).join('')}</div>
   <div class="grid g2">${list.map(o => orderCard(o)).join('') || '<div class="empty card">Nothing here.</div>'}</div>`;
 };
 V.order = id => {
@@ -445,11 +515,12 @@ function shipTimeline(o) {
   return `<ol class="tl">${steps.map(([a, b, d]) => `<li class="${d === 'cur' ? 'cur' : d ? 'done' : ''}"><span class="d">${d === true ? ic('check') : ''}</span><b>${a}</b><span>${b}</span></li>`).join('')}</ol>`;
 }
 V.cargo = () => {
-  const list = S.orders.filter(o => o.stage >= 11 && o.stage <= 14);
+  const list = myOrders().filter(o => o.stage >= 11 && o.stage <= 14);
   return `<h1>${t('cargo')} tracking</h1><p class="muted">Essential milestones only — departure, ETA and current status.</p><div class="grid g2">${list.map(o => `<div class="card"><div class="row wrap"><b class="mono">${o.id}</b><span class="sp"></span><span class="chip ${o.stage === 14 ? '' : 'warn pulse'}">${o.ship ? o.ship.st : 'Awaiting pickup'}${o.stage === 14 ? ' · Delivered' : ''}</span></div>${o.ship ? `<p class="small muted" style="margin:6px 0 12px">${o.ship.from} → ${o.ship.to} · ${o.ship.mawb}</p>${shipTimeline(o)}` : '<p class="small muted" style="margin:8px 0">Packed and waiting for 3PL pickup at the vendor.</p>'}${o.stage === 13 ? `<button class="btn" data-act="pod" data-id="${o.id}">${ic('pen')} Sign POD</button>` : ''}</div>`).join('') || '<div class="empty card">No shipments yet.</div>'}</div>`;
 };
 
 /* ----- Supplier ----- */
+const myOrders = () => S.orders.filter(o => o.buyer === ROLES.BUYER.user.split(' · ')[0]);
 const mineOrders = () => S.orders.filter(o => o.stage >= 5 && o.status !== 'review');
 const mmkLines = o => o.items.reduce((a, i) => a + prod(i.p).unit * i.q, 0);
 function syncBar() { const q = S.q.length; return `<div class="syncbar ${S.offline ? 'off' : ''}">${ic('wifi')}<span>${S.offline ? `Offline · ${q} change${q === 1 ? '' : 's'} queued` : 'Sync OK · Yangon Node #04 · 3G cache live'}</span><span class="sp"></span><button class="switch ${S.offline ? '' : 'on'}" data-act="net" role="switch" aria-checked="${!S.offline}" aria-label="Network"></button></div>`; }
@@ -551,7 +622,7 @@ const feed = (r, n = 6) => `<ul class="bd">${myEvents(r).slice(0, n).map(e => `<
 const quick = items => `<div class="row wrap">${items.map(([h, i, l]) => `<a class="btn sec" href="${h}">${ic(i)} ${l}</a>`).join('')}</div>`;
 const todo = (n, label, href) => `<a class="row card hv" style="text-decoration:none;color:inherit" href="${href}"><b class="num" style="font:700 22px var(--f-ui);min-width:32px">${n}</b><span>${label}</span><span class="sp"></span>${ic('check', n ? '' : 'muted')}</a>`;
 V.bhome = () => {
-  const mine = S.orders, act = mine.filter(o => o.stage < 14 && o.status !== 'declined'), held = act.filter(o => o.stage >= 4).reduce((a, o) => a + o.calc.totalMMK, 0);
+  const mine = myOrders(), act = mine.filter(o => o.stage < 14 && o.status !== 'declined'), held = act.filter(o => o.stage >= 4).reduce((a, o) => a + o.calc.totalMMK, 0);
   const soon = liveP().filter(p => p.cut <= 24 || p.res / p.quota >= .85).slice(0, 3);
   return `<h1>Welcome back, ${esc(ROLES.BUYER.user.split(' · ')[0])}</h1>
   <div class="kpis">${kpi('Active orders', act.length, mine.filter(o => o.stage === 13).length + ' out for delivery')}${kpi('Held in escrow', fmt(S.cur, toCur(held, S.cur)), 'Released on your POD')}${kpi('Delivered', mine.filter(o => o.stage === 14).length, 'Completed orders')}${kpi('Reserved in cart', S.cart.length, S.cart.length ? 'Ready to pay' : 'Nothing pending')}</div>
@@ -561,7 +632,7 @@ V.bhome = () => {
   <div class="title-row"><h2>Active orders</h2><span class="sp"></span><a class="small" href="#/orders">All orders →</a></div><div class="grid g2">${act.slice(0, 3).map(o => orderCard(o)).join('') || '<div class="empty card">No active orders.</div>'}</div>`;
 };
 V.invoices = () => {
-  const L = S.orders.filter(o => o.stage >= 4 && o.status !== 'declined');
+  const L = myOrders().filter(o => o.stage >= 4 && o.status !== 'declined');
   return `<a href="#/home" class="small">← ${t('home')}</a><h1>Invoices &amp; payments</h1><div class="card scroll"><table class="tbl"><thead><tr><th>Invoice</th><th>Date</th><th>Method</th><th class="r">Amount</th><th>Status</th><th></th></tr></thead><tbody>${L.map(o => `<tr><td class="mono">INV-${o.id.slice(2)}</td><td>${dt(o.ts)}</td><td class="small">${o.rail}</td><td class="r num">${fmt(o.cur, o.calc.total)}</td><td><span class="chip ${o.stage >= 14 ? '' : 'warn'}">${o.stage >= 14 ? 'Settled' : 'In escrow'}</span></td><td class="r"><button class="btn sec sm" data-act="invoice" data-id="${o.id}">View</button></td></tr>`).join('') || '<tr><td colspan="6" class="muted">No invoices yet</td></tr>'}</tbody></table></div>`;
 };
 V.shome = () => {
@@ -590,18 +661,23 @@ let AF = 'all', ALF = 'all';
 /* ----- Admin: income & supplier breakdown ----- */
 function incomeLines(f) {
   return S.orders.filter(o => o.stage >= 4 && o.status !== 'declined' && periodOK(f, o.ts) && (f.country === 'all' || oCountry(o) === f.country)).flatMap(o => {
-    const c = o.cons || o.later, plat = o.calc.margin + o.calc.fxbuf + (c ? c.grossMMK - o.calc.totalMMK : 0);
-    return o.items.map(i => { const p = prod(i.p), a = p.unit * i.q, sh = a / o.calc.artisan; return { o, p, v: p.v, cat: p.cat, country: oCountry(o), qty: i.q, artisan: a, platform: plat * sh, landed: o.calc.totalMMK * sh, paid: a * ((o.rel.dep ? .5 : 0) + (o.rel.bal ? .5 : 0)) }; });
+    const c = o.cons || o.later, fee = c ? c.grossMMK - o.calc.totalMMK : 0;
+    return o.items.map(i => { const p = prod(i.p), a = p.unit * i.q, sh = a / o.calc.artisan; return { o, p, v: p.v, cat: p.cat, country: oCountry(o), qty: i.q, artisan: a, margin: o.calc.margin * sh, fxbuf: o.calc.fxbuf * sh, freight: o.calc.freight * sh, fee: fee * sh, platform: (o.calc.margin + o.calc.fxbuf + fee) * sh, landed: o.calc.totalMMK * sh, paid: a * ((o.rel.dep ? .5 : 0) + (o.rel.bal ? .5 : 0)) }; });
   }).filter(l => catOK(f, l.cat) && (f.vendor === 'all' || l.v === f.vendor) && rangeOK(f, l.landed) && (!f.q || (l.o.id + ' ' + l.p.n).toLowerCase().includes(f.q.toLowerCase())));
 }
 V.aincome = () => {
-  const f = fsx('income'), L = incomeLines(f), sum = (a, k) => a.reduce((t, x) => t + x[k], 0);
-  const grp = (key, label) => { const m = {}; L.forEach(l => { const k = key(l); const g = m[k] || (m[k] = { n: label(l), orders: new Set(), qty: 0, landed: 0, artisan: 0, paid: 0, platform: 0 }); g.orders.add(l.o.id); g.qty += l.qty; g.landed += l.landed; g.artisan += l.artisan; g.paid += l.paid; g.platform += l.platform; }); return Object.values(m).sort((a, b) => b.landed - a.landed); };
+  const f = fsx('income'), L = incomeLines(f), sum = (a, k) => a.reduce((t, x) => t + x[k], 0), billed = sum(L, 'landed') + sum(L, 'fee');
+  const grp = (key, label) => { const m = {}; L.forEach(l => { const k = key(l); const g = m[k] || (m[k] = { n: label(l), orders: new Set(), qty: 0, landed: 0, artisan: 0, paid: 0, platform: 0, margin: 0, fxbuf: 0, freight: 0, fee: 0 }); g.orders.add(l.o.id); ['qty', 'landed', 'artisan', 'paid', 'platform', 'margin', 'fxbuf', 'freight', 'fee'].forEach(k2 => { g[k2] += l[k2]; }); }); return Object.values(m).sort((a, b) => b.landed - a.landed); };
   const tbl = (title, rows, first) => `<div class="card scroll"><h3>${title}</h3><table class="tbl"><thead><tr><th>${first}</th><th class="r">Orders</th><th class="r">Units</th><th class="r">Sales (landed)</th><th class="r">Supplier cost</th><th class="r">Paid out</th><th class="r">Platform income</th></tr></thead><tbody>${rows.map(g => `<tr><td><b>${esc(g.n)}</b></td><td class="r num">${g.orders.size}</td><td class="r num">${g.qty}</td><td class="r num">${mmk(g.landed)}</td><td class="r num">${mmk(g.artisan)}</td><td class="r num">${mmk(g.paid)}</td><td class="r num">${mmk(g.platform)}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">No data for these filters</td></tr>'}</tbody></table></div>`;
+  const comps = [['Supplier cost (artisan)', 'artisan'], ['Platform margin', 'margin'], ['FX buffer', 'fxbuf'], ['Freight', 'freight'], ['Consignment / pay-later fees', 'fee']];
+  const budget = `<div class="card scroll"><h3>Budget breakdown</h3><table class="tbl"><thead><tr><th>Cost component</th><th class="r">MMK</th><th class="r">% of total</th></tr></thead><tbody>${comps.map(([n, k]) => `<tr><td>${n}</td><td class="r num">${mmk(sum(L, k))}</td><td class="r num">${billed ? (sum(L, k) / billed * 100).toFixed(1) : '0.0'}%</td></tr>`).join('')}<tr><td><b>Total billed to buyers</b></td><td class="r num"><b>${mmk(billed)}</b></td><td class="r num">100%</td></tr></tbody></table></div>`;
+  const bsup = grp(l => l.v, l => vendorOf(l.v).n), bud2 = `<div class="card scroll"><h3>Budget by supplier</h3><table class="tbl"><thead><tr><th>Supplier</th><th class="r">Supplier cost</th><th class="r">Margin</th><th class="r">FX buffer</th><th class="r">Freight</th><th class="r">Fees</th><th class="r">Total</th></tr></thead><tbody>${bsup.map(g => `<tr><td><b>${esc(g.n)}</b></td><td class="r num">${mmk(g.artisan)}</td><td class="r num">${mmk(g.margin)}</td><td class="r num">${mmk(g.fxbuf)}</td><td class="r num">${mmk(g.freight)}</td><td class="r num">${mmk(g.fee)}</td><td class="r num"><b>${mmk(g.landed + g.fee)}</b></td></tr>`).join('') || '<tr><td colspan="7" class="muted">No data for these filters</td></tr>'}</tbody></table></div>`;
+  const byOrder = {}; L.forEach(l => { const g = byOrder[l.o.id] || (byOrder[l.o.id] = { o: l.o, qty: 0, artisan: 0, mf: 0, freight: 0, fee: 0 }); g.qty += l.qty; g.artisan += l.artisan; g.mf += l.margin + l.fxbuf; g.freight += l.freight; g.fee += l.fee; });
+  const orows = Object.values(byOrder).sort((a, b) => b.o.ts - a.o.ts), ord2 = `<div class="card scroll"><h3>Order breakdown</h3><table class="tbl"><thead><tr><th>Order</th><th>Buyer</th><th>Country</th><th>Stage</th><th class="r">Units</th><th class="r">Supplier cost</th><th class="r">Margin + FX</th><th class="r">Freight</th><th class="r">Fees</th><th class="r">Total</th></tr></thead><tbody>${orows.map(g => `<tr><td><a class="mono" href="#/order/${g.o.id}">${g.o.id}</a> ${tagChips(g.o)}</td><td>${esc(g.o.buyer)}</td><td>${oCountry(g.o)}</td><td>${stageChip(g.o)}</td><td class="r num">${g.qty}</td><td class="r num">${mmk(g.artisan)}</td><td class="r num">${mmk(g.mf)}</td><td class="r num">${mmk(g.freight)}</td><td class="r num">${mmk(g.fee)}</td><td class="r num"><b>${mmk(g.artisan + g.mf + g.freight + g.fee)}</b></td></tr>`).join('') || '<tr><td colspan="10" class="muted">No orders for these filters</td></tr>'}</tbody></table></div>`;
   return `<a href="#/a/overview" class="small">← Overview</a><div class="title-row"><h1>Income &amp; suppliers</h1></div><p class="muted">Funded orders only. Platform income = margin + FX buffer + consignment / pay-later fees. Amounts in MMK.</p>
   ${fbar('income', { country: 'order', vendor: true, period: true, cur: 'MMK' })}
   <div class="kpis">${kpi('Sales (landed)', mmk(sum(L, 'landed')), new Set(L.map(l => l.o.id)).size + ' orders')}${kpi('Platform income', mmk(sum(L, 'platform')), 'margin + fees')}${kpi('Paid to suppliers', mmk(sum(L, 'paid')), 'released from escrow')}${kpi('Still to release', mmk(sum(L, 'artisan') - sum(L, 'paid')), 'held for suppliers')}</div>
-  <div class="grid" style="grid-template-columns:1fr">${tbl('By supplier', grp(l => l.v, l => vendorOf(l.v).n), 'Supplier')}${tbl('By category', grp(l => l.cat, l => l.cat), 'Category')}${tbl('By destination country', grp(l => l.country, l => l.country), 'Country')}</div>`;
+  <div class="grid" style="grid-template-columns:1fr">${budget}${tbl('By supplier', bsup, 'Supplier')}${bud2}${tbl('By category', grp(l => l.cat, l => l.cat), 'Category')}${tbl('By destination country', grp(l => l.country, l => l.country), 'Country')}${ord2}</div>`;
 };
 const unreadN = () => (S.alerts || []).filter(a => !a.read).length;
 const alertRow = a => { const [l, c, tc] = AL_GRP[a.group]; return `<a class="card hv" href="${a.href}" data-act="al-open" data-id="${a.id}" style="display:block;text-decoration:none;color:inherit;border-left:5px solid ${c};padding:12px 14px;${a.read ? 'opacity:.75' : ''}"><div class="row wrap"><span class="chip" style="background:${c}1f;color:${tc}"><i class="gdot" style="background:${c}"></i>${l}</span>${a.hot ? '<span class="chip bad">Needs attention</span>' : ''}${a.read ? '' : '<span class="chip ai">New</span>'}<span class="sp"></span><span class="small muted">${ago(a.ts)}</span></div><div style="margin-top:6px"><b>${esc(a.title)}</b></div><div class="small muted">${esc(a.msg)}</div></a>`; };
@@ -853,7 +929,7 @@ const MM = {
   'All batches': 'အားလုံး', 'All': 'အားလုံး', 'Textiles': 'ပိုးထည်အထည်', 'Lacquerware': 'ယွန်းထည်', 'Tea & Coffee': 'လက်ဖက်နှင့် ကော်ဖီ', 'Gems & Jewelry': 'ကျောက်မျက်နှင့် လက်ဝတ်ရတနာ', 'Wellness': 'ကျန်းမာရေး',
   'Consignment': 'အပ်နှံရောင်းချမှု', 'Consignment terms': 'အပ်နှံစည်းမျဉ်းများ', 'Order type': 'မှာယူမှုပုံစံ', 'Report sales': 'ရောင်းရမှု ပို့ရန်', 'Settle now': 'ယခု ပေးချေမည်', 'Extend +30 days': 'ရက် ၃၀ တိုးမည်', 'Buy out remainder': 'ကျန်ပစ္စည်း ဝယ်မည်', 'Return unsold': 'မရောင်းရသည် ပြန်ပို့', 'Send settlement reminder': 'ပေးချေရန် သတိပေးမည်', 'Report & settle': 'ပို့၍ ပေးချေမည်',
   'Order options': 'မှာယူမှု ရွေးချယ်စရာများ', 'Pay later': 'နောက်မှ ပေးချေမည်', 'Deliver later': 'နောက်မှ ပို့ဆောင်မည်', 'Payment': 'ငွေပေးချေမှု', 'Delivery': 'ပို့ဆောင်မှု', 'Flexible terms': 'ပြောင်းလွယ်စည်းမျဉ်း', 'Pay later terms': 'နောက်မှပေးချေမှု စည်းမျဉ်း', 'Pay now': 'ယခု ပေးမည်', 'Release hold now': 'ယခု ထုတ်ပို့ရန် ဖွင့်မည်', 'Save fees': 'ကြေးများ သိမ်းမည်', 'Reset to defaults': 'မူလအတိုင်း ပြန်ထားမည်',
-  'Send for quality check': 'အရည်အသွေးစစ်ရန် ပို့မည်', 'Pass quality check': 'အရည်အသွေး အောင်မြင်', 'Quality check queue': 'အရည်အသွေးစစ်ဆေးရန် စာရင်း', 'Pass': 'အောင်', 'Fail': 'ကျ', 'Business & warehouses': 'လုပ်ငန်းနှင့် ကုန်လှောင်ရုံများ', 'Warehouses': 'ကုန်လှောင်ရုံများ', 'Supplier details': 'ကုန်သည် အချက်အလက်', 'Edit details': 'အချက်အလက် ပြင်မည်', '+ Add warehouse': '+ ကုန်လှောင်ရုံ ထည့်ရန်', 'Add warehouse': 'ကုန်လှောင်ရုံ ထည့်ရန်', 'Edit warehouse': 'ကုန်လှောင်ရုံ ပြင်ရန်', 'Save details': 'အချက်အလက် သိမ်းမည်', 'Save warehouse': 'ကုန်လှောင်ရုံ သိမ်းမည်', 'Delete warehouse?': 'ကုန်လှောင်ရုံ ဖျက်မလား?', 'Profile & warehouses': 'ပရိုဖိုင်နှင့် ကုန်လှောင်ရုံ', 'Manage products': 'ကုန်ပစ္စည်း စီမံရန်', 'Alerts': 'သတိပေးချက်များ', 'Filters': 'စစ်ထုတ်ရန်', 'Reset filters': 'စစ်ထုတ်မှု ပြန်ဖျက်', 'Income': 'ဝင်ငွေ', 'By supplier': 'ကုန်သည်အလိုက်', 'By category': 'အမျိုးအစားအလိုက်', 'By destination country': 'နိုင်ငံအလိုက်', 'Edit terms': 'စည်းမျဉ်း ပြင်ရန်', 'Consignment': 'အပ်နှံရောင်းချမှု', 'Latest alerts': 'နောက်ဆုံး သတိပေးချက်များ', 'Mark all read': 'အားလုံး ဖတ်ပြီးပြု', 'Clear read': 'ဖတ်ပြီးသည်များ ဖယ်ရန်', 'View all →': 'အားလုံးကြည့်ရန် →', 'Next →': 'ရှေ့ဆက်မည် →', 'Next': 'ရှေ့ဆက်မည်', '+ Add product': '+ ကုန်ပစ္စည်း ထည့်ရန်', 'Add product': 'ကုန်ပစ္စည်း ထည့်ရန်', 'Edit product': 'ကုန်ပစ္စည်း ပြင်ရန်', 'Edit': 'ပြင်မည်', 'Delete': 'ဖျက်မည်', 'Save changes': 'ပြောင်းလဲမှု သိမ်းမည်', 'Delete product?': 'ကုန်ပစ္စည်း ဖျက်မလား?', 'Remove photo': 'ဓာတ်ပုံ ဖယ်ရှားမည်', 'Products': 'ကုန်ပစ္စည်းများ', 'Pickup preparation':'ပစ္စည်းလာယူရန် ပြင်ဆင်မှု', 'Cargo moving': 'ကုန်စည် သွားနေ', 'Needs attention': 'စစ်ဆေးရန်လို',
+  'Send for quality check': 'အရည်အသွေးစစ်ရန် ပို့မည်', 'Pass quality check': 'အရည်အသွေး အောင်မြင်', 'Quality check queue': 'အရည်အသွေးစစ်ဆေးရန် စာရင်း', 'Pass': 'အောင်', 'Fail': 'ကျ', 'Business & warehouses': 'လုပ်ငန်းနှင့် ကုန်လှောင်ရုံများ', 'Warehouses': 'ကုန်လှောင်ရုံများ', 'Supplier details': 'ကုန်သည် အချက်အလက်', 'Edit details': 'အချက်အလက် ပြင်မည်', '+ Add warehouse': '+ ကုန်လှောင်ရုံ ထည့်ရန်', 'Add warehouse': 'ကုန်လှောင်ရုံ ထည့်ရန်', 'Edit warehouse': 'ကုန်လှောင်ရုံ ပြင်ရန်', 'Save details': 'အချက်အလက် သိမ်းမည်', 'Save warehouse': 'ကုန်လှောင်ရုံ သိမ်းမည်', 'Delete warehouse?': 'ကုန်လှောင်ရုံ ဖျက်မလား?', 'Profile & warehouses': 'ပရိုဖိုင်နှင့် ကုန်လှောင်ရုံ', 'Manage products': 'ကုန်ပစ္စည်း စီမံရန်', 'Alerts': 'သတိပေးချက်များ', 'Filters': 'စစ်ထုတ်ရန်', 'Reset filters': 'စစ်ထုတ်မှု ပြန်ဖျက်', 'Income': 'ဝင်ငွေ', 'By supplier': 'ကုန်သည်အလိုက်', 'Budget breakdown': 'ဘတ်ဂျက် ခွဲခြမ်းစိတ်ဖြာ', 'Budget by supplier': 'ကုန်သည်အလိုက် ဘတ်ဂျက်', 'Order breakdown': 'အော်ဒါ ခွဲခြမ်းစိတ်ဖြာ', 'By category': 'အမျိုးအစားအလိုက်', 'By destination country': 'နိုင်ငံအလိုက်', 'Edit terms': 'စည်းမျဉ်း ပြင်ရန်', 'Consignment': 'အပ်နှံရောင်းချမှု', 'Latest alerts': 'နောက်ဆုံး သတိပေးချက်များ', 'Mark all read': 'အားလုံး ဖတ်ပြီးပြု', 'Clear read': 'ဖတ်ပြီးသည်များ ဖယ်ရန်', 'View all →': 'အားလုံးကြည့်ရန် →', 'Next →': 'ရှေ့ဆက်မည် →', 'Next': 'ရှေ့ဆက်မည်', '+ Add product': '+ ကုန်ပစ္စည်း ထည့်ရန်', 'Add product': 'ကုန်ပစ္စည်း ထည့်ရန်', 'Edit product': 'ကုန်ပစ္စည်း ပြင်ရန်', 'Edit': 'ပြင်မည်', 'Delete': 'ဖျက်မည်', 'Save changes': 'ပြောင်းလဲမှု သိမ်းမည်', 'Delete product?': 'ကုန်ပစ္စည်း ဖျက်မလား?', 'Remove photo': 'ဓာတ်ပုံ ဖယ်ရှားမည်', 'Products': 'ကုန်ပစ္စည်းများ', 'Pickup preparation':'ပစ္စည်းလာယူရန် ပြင်ဆင်မှု', 'Cargo moving': 'ကုန်စည် သွားနေ', 'Needs attention': 'စစ်ဆေးရန်လို',
   'Home': 'ပင်မ', 'Catalog': 'ကတ်တလောက်', 'Orders': 'အော်ဒါများ', 'Cargo': 'ကုန်စည်', 'Account': 'အကောင့်', 'Stock': 'စတော့', 'Payouts': 'ငွေထုတ်', 'Manifest': 'မန်နီဖက်စ်', 'POD': 'POD', 'Overview': 'အနှစ်ချုပ်', 'FX Engine': 'FX', 'Vendors': 'ကုန်သည်များ', 'Escrow': 'အာမခံငွေ', 'Test Lab': 'စမ်းသပ်ခန်း',
   /* section titles */
   'Landed cost': 'ရောက်ရှိကုန်ကျစရိတ်', 'Items': 'ကုန်ပစ္စည်းများ', 'Payment slip': 'ငွေပေးချေ ဘောင်ချာ', 'Order journey · 14 stages': 'အော်ဒါ ခရီးစဉ် · အဆင့် ၁၄', 'Weight intake & consolidation': 'အလေးချိန် မှတ်သားခြင်းနှင့် ပေါင်းစည်းခြင်း',
