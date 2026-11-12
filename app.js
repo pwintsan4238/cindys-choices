@@ -243,7 +243,7 @@ V.catalog = () => {
   const hero = liveP()[0];
   return `${hero ? `<div class="hero"><span class="chip">${ic('spark')} Active export lot · cutoff <span data-cut="${hero.id}">${cdown(cutTs(hero) - Date.now())}</span></span>
    <h1>${hero.id === 'P1' ? 'Inle Lotus Silk &amp; Bagan Royal Lacquer' : 'Burmese craft, export-ready'}</h1><p style="opacity:.85">Customs-cleared, export-certified Burmese craft. Reserve a share of the next consolidated dispatch to Bangkok &amp; Taipei.</p>
-   <a class="btn acc" style="margin-top:14px" href="#/product/${hero.id}">Reserve batch →</a></div>` : ''}
+   <a class="btn acc" style="margin-top:14px" href="#/product/${hero.id}">Next →</a></div>` : ''}
    <div class="row"><input class="inp" id="q" placeholder="${t('search')}" value="${esc(Q)}" aria-label="Search"><select class="sel sm" data-act="cur" aria-label="Currency">${Object.keys(CUR).map(c => `<option ${S.cur === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
    <div class="pills">${['All', ...CATS].map(c => `<button class="${CAT === c ? 'on' : ''}" data-act="cat" data-v="${c}">${c === 'All' ? t('all') : c}</button>`).join('')}</div>
    <div class="grid g2">${list.map(p => card(p)).join('') || '<div class="empty">No batches match.</div>'}</div>`;
