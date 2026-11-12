@@ -26,7 +26,10 @@ const NAV = {
   ADMIN: [['#/a/overview', 'grid', 'overview'], ['#/a/orders', 'box', 'allorders'], ['#/a/fx', 'trend', 'fx'], ['#/a/vendors', 'users', 'vendors'], ['#/a/escrow', 'lock', 'escrow'], ['#/account', 'user', 'account']]
 };
 const STAGES = ['Order placed', 'Payment slip submitted', 'Slip verified', 'Escrow funded', 'Vendor notified', 'Vendor accepted', 'Stock confirmed', 'Quality check', 'Batch closed', 'QR labels printed', 'Packed · ready for pickup', 'Picked up · in transit', 'Customs cleared · out for delivery', 'Delivered · POD signed'];
-const CATS = ['Textiles', 'Lacquerware', 'Tea & Coffee', 'Gems & Jewelry', 'Wellness'];
+const CATS = ['Textiles', 'Lacquerware', 'Tea & Coffee', 'Spices & Condiments', 'Snacks & Sweets', 'Dried Fruits & Nuts', 'Gems & Jewelry', 'Wellness'];
+const FOOD = ['Tea & Coffee', 'Spices & Condiments', 'Snacks & Sweets', 'Dried Fruits & Nuts'];   /* food & drink categories */
+const COUNTRY = { TH: 'Thailand', TW: 'Taiwan', INT: 'International', MM: 'Myanmar' };   /* order destination */
+const ORIGINS = ['Myanmar', 'Thailand', 'Taiwan', 'Laos', 'India', 'China'];
 const CUR = { THB: { sym: '฿', rail: 'PromptPay QR', c: 'TH' }, TWD: { sym: 'NT$', rail: 'Taiwan Pay QR', c: 'TW' }, USD: { sym: '$', rail: 'Regional wire transfer', c: 'INT' }, MMK: { sym: 'Ks ', rail: 'MyanMyanPay QR (KBZPay · WavePay)', c: 'MM' } };
 const ICONS = {
   user: 'M12 12a4 4 0 100-8 4 4 0 000 8zM4 21a8 8 0 0116 0',
@@ -50,6 +53,9 @@ let PRODUCTS = [
   { id: 'P5', n: 'Jadeite Cabochon Pendant, Type A', mm: 'ကျောက်စိမ်း ပတ်သရေ အေအမျိုးအစား', cat: 'Gems & Jewelry', v: 'V5', unit: 850000, kg: 0.05, moq: 5, quota: 30, res: 11, cut: 120, from: 'Mogok · Mandalay', note: 'Lab-certified natural, untreated', tag: 'Certified' },
   { id: 'P6', n: 'Pa-O Hand-Woven Longyi Set', mm: 'ပအိုဝ်း ကိုယ်တိုင်ရက် လုံချည်', cat: 'Textiles', v: 'V2', unit: 68000, kg: 0.6, moq: 30, quota: 150, res: 47, cut: 40, from: 'Kalaw', note: 'Cotton-silk, indigo & mulberry', tag: 'Fair Trade' },
   { id: 'P7', n: 'Pyin Oo Lwin Green Tea (5 kg)', mm: 'ပင်ဥလွင် လက်ဖက်စိမ်း', cat: 'Tea & Coffee', v: 'V3', unit: 55000, kg: 5, moq: 30, quota: 180, res: 70, cut: 30, from: 'Pyin Oo Lwin', note: 'Spring flush, hand-rolled', tag: 'Single Origin' },
+  { id: 'F1', n: 'Shan Pickled Tea Leaf (Lahpet) Jar Set', mm: 'လက်ဖက်သုပ် ဘူးစုံ', cat: 'Snacks & Sweets', v: 'V3', unit: 38000, kg: 4, moq: 24, quota: 120, res: 30, cut: 44, from: 'Ywangan', note: 'Traditional fermented tea leaf with crunchy toppings', tag: 'Local Favourite' },
+  { id: 'F2', n: 'Turmeric & Chili Spice Set (6 jars)', mm: 'ဝင်းနှင့် ငရုတ်သီးမှုန့် ဆက်', cat: 'Spices & Condiments', v: 'V4', unit: 42000, kg: 2.5, moq: 20, quota: 100, res: 18, cut: 60, from: 'Mandalay', note: 'Sun-dried, stone-ground, food-safe jars', tag: 'Small Batch' },
+  { id: 'F3', n: 'Sagaing Dried Mango & Peanut Brittle Box', mm: 'သရက်သီးခြောက်နှင့် မြေပဲချိူချဉ်', cat: 'Dried Fruits & Nuts', v: 'V4', unit: 52000, kg: 3, moq: 20, quota: 90, res: 12, cut: 80, from: 'Sagaing', note: 'No added preservatives · 12-month shelf life', tag: 'New Season' },
   { id: 'P8', n: 'Padauk Lacquer Jewellery Box', mm: 'ပိတောက် ယွန်းလက်ဝတ်ရတနာသေတ္တာ', cat: 'Lacquerware', v: 'V1', unit: 72000, kg: 1.2, moq: 12, quota: 72, res: 70, cut: 9, from: 'Bagan', note: 'Teak-core, bamboo-weave, gilded', tag: 'Closing soon' }
 ];
 let VENDORS = [
@@ -101,7 +107,7 @@ function seedOrders() {
   };
   const co = mk('O-1039', 900, [{ p: 'P2', q: 12 }], 14), ct = consTerms(co.items, co.cur, { dep: 25 }), st0 = co.ts + 20 * H;
   co.cons = { dep: 25, term: 60, settle: 'sold', unsold: 'return', feePct: ct.feePct, grossMMK: Math.round(ct.grossMMK), depMMK: ct.depMMK, sold: { P2: 5 }, paid: 0, disc: 0, ext: 0, start: st0, due: st0 + 60 * 24 * H, closed: false };
-  return [mk('O-1041', 5, [{ p: 'P1', q: 20 }, { p: 'P3', q: 24 }], 5), mk('O-1040', 70, [{ p: 'P2', q: 12 }], 11), mk('O-1038', 160, [{ p: 'P6', q: 30 }], 13), mk('O-1030', 400, [{ p: 'P4', q: 40 }], 14, 'THB'), co];
+  return [mk('O-1041', 5, [{ p: 'P1', q: 20 }, { p: 'P3', q: 24 }], 5), mk('O-1040', 70, [{ p: 'P2', q: 12 }], 11), mk('O-1038', 160, [{ p: 'P6', q: 30 }], 13), mk('O-1030', 400, [{ p: 'P4', q: 40 }], 14, 'THB'), co, mk('O-1037', 600, [{ p: 'F1', q: 30 }, { p: 'F2', q: 20 }], 14, 'TWD'), mk('O-1036', 300, [{ p: 'F3', q: 24 }, { p: 'P5', q: 5 }], 13, 'USD')];
 }
 function seed() {
   const s = { v: 1, role: null, lang: 'en', cur: 'THB', fx: JSON.parse(JSON.stringify(SEED_FX)), orders: seedOrders(), cart: [], vendors: VENDORS.map(v => ({ ...v })), disputes: [{ id: 'D-77', order: 'O-1038', by: 'Buyer', why: '2 of 30 longyi sets arrived with loose threads', open: true, amt: 270000 }], ledger: [], events: [], q: [], offline: false, nextOrder: 1042, review: [] };
@@ -119,6 +125,8 @@ function defaultWh(v) {
 }
 function syncProducts() {
   if (!S.products) S.products = JSON.parse(PRODUCTS0).map(p => ({ ...p, live: true }));
+  if ((S.pv || 0) < 2) { JSON.parse(PRODUCTS0).filter(p => p.id[0] === 'F' && !S.products.some(x => x.id === p.id)).forEach(p => S.products.push({ ...p, live: true })); S.pv = 2; }
+  S.products.forEach(p => { if (!p.country) p.country = 'Myanmar'; });
   PRODUCTS = S.products; VENDORS = S.vendors;
   VENDORS.forEach(v => { if (!v.cons) { const c = opts().cons; v.cons = { on: true, dep: c.dep, term: c.term, settle: c.settle, unsold: c.unsold, by: 'admin' }; } if (!v.wh) v.wh = defaultWh(v); if (v.addr === undefined) { v.addr = ''; v.phone = v.phone || ''; v.contact = v.contact || ''; } });
   PRODUCTS.forEach(p => { if (!p.wh) { const v = VENDORS.find(x => x.id === p.v); if (v) p.wh = (p.id === 'P8' && v.wh[1] ? v.wh[1] : v.wh[0]).id; } });
@@ -177,12 +185,12 @@ function art(p) {
   return `<img src="images/${p.id}.jpg" alt="${esc(p.n)}" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.outerHTML=this.dataset.f" data-f="${esc(artSvg(p))}">`;
 }
 function artSvg(p) {
-  const pal = { Lacquerware: ['#7a1f12', '#c8872e', '#1b0f0c'], Textiles: ['#1d6f78', '#e3b04b', '#0e3b46'], 'Tea & Coffee': ['#6b4226', '#a7c07a', '#2b1a0e'], 'Gems & Jewelry': ['#0d5c4d', '#8dd2bf', '#04261f'], Wellness: ['#c9a574', '#f3e3c3', '#6a4a20'] }[p.cat];
+  const pal = { Lacquerware: ['#7a1f12', '#c8872e', '#1b0f0c'], Textiles: ['#1d6f78', '#e3b04b', '#0e3b46'], 'Tea & Coffee': ['#6b4226', '#a7c07a', '#2b1a0e'], 'Spices & Condiments': ['#9a3412', '#fbbf24', '#431407'], 'Snacks & Sweets': ['#92400e', '#fcd34d', '#451a03'], 'Dried Fruits & Nuts': ['#7c2d12', '#fdba74', '#3b1405'], 'Gems & Jewelry': ['#0d5c4d', '#8dd2bf', '#04261f'], Wellness: ['#c9a574', '#f3e3c3', '#6a4a20'] }[p.cat];
   const id = 'g' + p.id, n = +p.id.slice(1);
   let shape = '';
   if (p.cat === 'Lacquerware') shape = `<ellipse cx="200" cy="215" rx="95" ry="14" fill="#000" opacity=".25"/><path d="M110 150h180l-22 62q-68 18-136 0z" fill="${pal[0]}" stroke="${pal[1]}" stroke-width="3"/>${[0, 1, 2, 3, 4].map(i => `<path d="M${122 + i * 4} ${160 + i * 9}h${156 - i * 8}" stroke="${pal[1]}" stroke-width="1.5" opacity=".8"/>`).join('')}<ellipse cx="200" cy="150" rx="90" ry="16" fill="${pal[2]}" stroke="${pal[1]}" stroke-width="3"/>`;
   else if (p.cat === 'Textiles') shape = Array.from({ length: 9 }, (_, i) => `<path d="M${70 + i * 32} 40q${i % 2 ? 22 : -22} 90 0 180" stroke="${i % 3 ? pal[1] : '#fff'}" stroke-width="${10 - (i % 3) * 2}" fill="none" opacity="${0.55 + (i % 3) * .15}"/>`).join('');
-  else if (p.cat === 'Tea & Coffee') shape = Array.from({ length: 34 }, (_, i) => { const x = 60 + (i * 53 + n * 17) % 280, y = 50 + (i * 37 + n * 11) % 160; return `<ellipse cx="${x}" cy="${y}" rx="11" ry="7" transform="rotate(${i * 37} ${x} ${y})" fill="${i % 4 ? pal[0] : pal[1]}"/><path d="M${x - 8} ${y}h16" stroke="${pal[2]}" stroke-width="1.2" transform="rotate(${i * 37} ${x} ${y})"/>`; }).join('');
+  else if (FOOD.includes(p.cat)) shape = Array.from({ length: 34 }, (_, i) => { const x = 60 + (i * 53 + n * 17) % 280, y = 50 + (i * 37 + n * 11) % 160; return `<ellipse cx="${x}" cy="${y}" rx="11" ry="7" transform="rotate(${i * 37} ${x} ${y})" fill="${i % 4 ? pal[0] : pal[1]}"/><path d="M${x - 8} ${y}h16" stroke="${pal[2]}" stroke-width="1.2" transform="rotate(${i * 37} ${x} ${y})"/>`; }).join('');
   else if (p.cat === 'Gems & Jewelry') shape = `<path d="M200 70l60 40-60 100-60-100z" fill="${pal[1]}" stroke="#fff" stroke-width="2" opacity=".95"/><path d="M140 110h120M200 70l-24 40 24 100 24-100z" stroke="${pal[0]}" stroke-width="2" fill="none"/><circle cx="200" cy="62" r="7" fill="none" stroke="${'#D4AF37'}" stroke-width="3"/>`;
   else shape = `<rect x="110" y="130" width="180" height="70" rx="6" fill="${pal[2]}"/><rect x="120" y="106" width="160" height="30" rx="4" fill="${pal[1]}" stroke="${pal[2]}" stroke-width="2"/><circle cx="200" cy="165" r="14" fill="${pal[1]}"/>`;
   return `<svg viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice" role="img" aria-label="${esc(p.n)}"><defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${pal[0]}" stop-opacity=".55"/><stop offset="1" stop-color="${pal[2]}"/></linearGradient><pattern id="${id}p" width="26" height="26" patternUnits="userSpaceOnUse"><path d="M13 0l13 13-13 13L0 13z" fill="none" stroke="#fff" stroke-opacity=".07"/></pattern></defs><rect width="400" height="300" fill="url(#${id})"/><rect width="400" height="300" fill="url(#${id}p)"/>${shape}</svg>`;
@@ -254,14 +262,15 @@ V.login = () => {
 /* ----- Buyer ----- */
 let CAT = 'All', Q = '';
 V.catalog = () => {
-  const list = liveP().filter(p => (CAT === 'All' || p.cat === CAT) && (!Q || (p.n + (p.mm || '') + p.v + p.from).toLowerCase().includes(Q.toLowerCase())));
+  const list = liveP().filter(p => (CAT === 'All' || p.cat === CAT) && catOK(fsx('catalog'), p.cat) && (fsx('catalog').country === 'all' || (p.country || 'Myanmar') === fsx('catalog').country) && rangeOK(fsx('catalog'), unitCur(p, S.cur)) && (!Q || (p.n + (p.mm || '') + p.v + p.from).toLowerCase().includes(Q.toLowerCase())));
   const hero = liveP()[0];
   return `${hero ? `<div class="hero"><span class="chip">${ic('spark')} Active export lot · cutoff <span data-cut="${hero.id}">${cdown(cutTs(hero) - Date.now())}</span></span>
    <h1>${hero.id === 'P1' ? 'Inle Lotus Silk &amp; Bagan Royal Lacquer' : 'Burmese craft, export-ready'}</h1><p style="opacity:.85">Customs-cleared, export-certified Burmese craft. Reserve a share of the next consolidated dispatch to Bangkok &amp; Taipei.</p>
    <a class="btn acc" style="margin-top:14px" href="#/product/${hero.id}">Next →</a></div>` : ''}
    <div class="row"><input class="inp" id="q" placeholder="${t('search')}" value="${esc(Q)}" aria-label="Search"><select class="sel sm" data-act="cur" aria-label="Currency">${Object.keys(CUR).map(c => `<option ${S.cur === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
    <div class="pills">${['All', ...CATS].map(c => `<button class="${CAT === c ? 'on' : ''}" data-act="cat" data-v="${c}">${c === 'All' ? t('all') : c}</button>`).join('')}</div>
-   <div class="grid g2">${list.map(p => card(p)).join('') || '<div class="empty">No batches match.</div>'}</div>`;
+   ${fbar('catalog', { search: false, cat: false, country: 'origin', cur: S.cur })}
+   <div class="grid g2">${list.map(p => card(p)).join('') || '<div class="empty card">No batches match these filters.</div>'}</div>`;
 };
 function card(p) {
   const pct = Math.round(p.res / p.quota * 100), hot = pct >= 85;
@@ -375,8 +384,8 @@ function orderCard(o, link = true) {
 let OTAB = 'active';
 V.orders = () => {
   const f = { active: o => o.stage < 14 && o.status !== 'declined', delivered: o => o.stage === 14, review: o => o.status === 'review' || o.status === 'dispute' || o.status === 'declined' };
-  const list = S.orders.filter(f[OTAB]);
-  return `<h1>${t('orders')}</h1><div class="seg" role="tablist">${[['active', 'Active'], ['delivered', 'Delivered'], ['review', 'Attention']].map(([k, n]) => `<button class="${OTAB === k ? 'on' : ''}" data-act="otab" data-v="${k}">${n} (${S.orders.filter(f[k]).length})</button>`).join('')}</div>
+  const flt = o => orderOK(fsx('orders'), o, S.cur), list = S.orders.filter(f[OTAB]).filter(flt);
+  return `<h1>${t('orders')}</h1>${fbar('orders', { country: 'order', cur: S.cur })}<div class="seg" role="tablist">${[['active', 'Active'], ['delivered', 'Delivered'], ['review', 'Attention']].map(([k, n]) => `<button class="${OTAB === k ? 'on' : ''}" data-act="otab" data-v="${k}">${n} (${S.orders.filter(f[k]).filter(flt).length})</button>`).join('')}</div>
   <div class="grid g2">${list.map(o => orderCard(o)).join('') || '<div class="empty card">Nothing here.</div>'}</div>`;
 };
 V.order = id => {
@@ -445,8 +454,8 @@ const mineOrders = () => S.orders.filter(o => o.stage >= 5 && o.status !== 'revi
 const mmkLines = o => o.items.reduce((a, i) => a + prod(i.p).unit * i.q, 0);
 function syncBar() { const q = S.q.length; return `<div class="syncbar ${S.offline ? 'off' : ''}">${ic('wifi')}<span>${S.offline ? `Offline · ${q} change${q === 1 ? '' : 's'} queued` : 'Sync OK · Yangon Node #04 · 3G cache live'}</span><span class="sp"></span><button class="switch ${S.offline ? '' : 'on'}" data-act="net" role="switch" aria-checked="${!S.offline}" aria-label="Network"></button></div>`; }
 V.sorders = () => {
-  const list = mineOrders();
-  return `<div class="supplier view">${syncBar()}<div style="height:16px"></div><h1>${t('orders')} · ${t('welcome')}</h1><p class="muted">Fixed MMK prices are locked. Tap once to act.</p>
+  const list = mineOrders().filter(o => orderOK(fsx('sorders'), o, 'MMK'));
+  return `<div class="supplier view">${syncBar()}<div style="height:16px"></div><h1>${t('orders')} · ${t('welcome')}</h1><p class="muted">Fixed MMK prices are locked. Tap once to act.</p>${fbar('sorders', { country: 'order', period: true, cur: 'MMK' })}
   ${list.map(o => {
     const st = o.stage, a = mmkLines(o);
     let act = '';
@@ -467,8 +476,8 @@ V.sstock = () => {
   return `<div class="supplier view">${syncBar()}<div style="height:16px"></div><div class="title-row"><h1>${t('stock')}</h1><span class="sp"></span><a class="btn sec sm" href="#/s/profile">Warehouses</a><a class="btn sm" href="#/s/products">Manage products</a></div><p class="muted">Shelf stock for ${vname()}.</p><div class="grid g2">${mine.map(p => `<div class="card"><b>${p.n}</b><div class="small muted">${p.mm || ''}</div><div class="row" style="margin:10px 0"><span class="chip ${p.live ? '' : 'gray'}">${p.live ? 'Live' : 'Not live'}</span><span class="chip">${p.quota - p.res} open in batch</span><span class="chip gray">${p.res} reserved</span></div><div class="bar"><i style="width:${p.res / p.quota * 100}%"></i></div><p class="small muted" style="margin-top:8px">Unit price lock: <b class="num">${mmk(p.unit)}</b></p></div>`).join('')}</div></div>`;
 };
 V.spayouts = () => {
-  const L = S.ledger.filter(e => e.cr === 'Vendor Payable'), tot = L.reduce((a, e) => a + e.mmk, 0);
-  return `<div class="supplier view">${syncBar()}<div style="height:16px"></div><h1>${t('payouts')}</h1><div class="kpis">${kpi('Released to you', mmk(tot), 'KBZPay / WavePay payout')}${kpi('Pending (escrow)', mmk(S.orders.filter(o => o.stage >= 4 && o.status !== 'declined').reduce((a, o) => a + mmkLines(o) - (o.rel.dep ? mmkLines(o) / 2 : 0) - (o.rel.bal ? mmkLines(o) / 2 : 0), 0)), 'Locked until stages 11 / 14')}</div>
+  const pf = fsx('spay'), L = S.ledger.filter(e => e.cr === 'Vendor Payable' && ord(e.order) && orderOK(pf, ord(e.order), 'MMK')), tot = L.reduce((a, e) => a + e.mmk, 0);
+  return `<div class="supplier view">${syncBar()}<div style="height:16px"></div><h1>${t('payouts')}</h1>${fbar('spay', { country: 'order', period: true, cur: 'MMK' })}<div class="kpis">${kpi('Released to you', mmk(tot), 'KBZPay / WavePay payout')}${kpi('Pending (escrow)', mmk(S.orders.filter(o => o.stage >= 4 && o.status !== 'declined' && orderOK(pf, o, 'MMK')).reduce((a, o) => a + mmkLines(o) - (o.rel.dep ? mmkLines(o) / 2 : 0) - (o.rel.bal ? mmkLines(o) / 2 : 0), 0)), 'Locked until stages 11 / 14')}</div>
   <div class="card scroll"><table class="tbl"><thead><tr><th>When</th><th>Order</th><th>Memo</th><th class="r">MMK</th></tr></thead><tbody>${L.map(e => `<tr><td>${dt(e.ts)}</td><td class="mono">${e.order}</td><td>${e.memo}</td><td class="r num">${mmk(e.mmk)}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">No payouts yet</td></tr>'}</tbody></table></div></div>`;
 };
 
@@ -505,7 +514,7 @@ V.aoverview = () => {
   const gmv = S.orders.filter(o => o.stage >= 4 && o.status !== 'declined').reduce((a, o) => a + o.calc.totalMMK, 0);
   const held = S.orders.filter(o => o.stage >= 4 && o.stage < 14 && o.status !== 'declined').reduce((a, o) => a + o.calc.totalMMK - (o.rel.dep ? o.calc.artisan / 2 : 0), 0);
   const rev = S.orders.filter(o => o.stage >= 4 && o.status !== 'declined').reduce((a, o) => a + o.calc.margin + o.calc.fxbuf, 0);
-  return `<div class="title-row"><h1>Operations overview</h1><span class="sp"></span><a class="btn sec sm" href="#/a/products">Products</a><a class="btn sec sm" href="#/a/options">Order options</a><span class="chip ai">${ic('spark')} Live · ${S.orders.length} orders</span></div>
+  return `<div class="title-row"><h1>Operations overview</h1><span class="sp"></span><a class="btn sec sm" href="#/a/income">Income</a><a class="btn sec sm" href="#/a/products">Products</a><a class="btn sec sm" href="#/a/options">Order options</a><span class="chip ai">${ic('spark')} Live · ${S.orders.length} orders</span></div>
   <div class="kpis">${kpi('GMV (funded)', mmk(gmv), '≈ ' + fmt('USD', toCur(gmv, 'USD')))}${kpi('In escrow', mmk(held), 'Awaiting stage 11 / 14')}${kpi('Platform revenue', mmk(rev), 'Margin + FX buffer')}${kpi('Needs review', S.review.length + S.disputes.filter(d => d.open).length, 'Slips + disputes')}</div>
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))"><div class="card"><h3>Review queue</h3>${S.review.map(id => { const o = ord(id); return `<div class="row wrap" style="padding:10px 0;border-bottom:1px solid #F1F5F9"><div><b class="mono">${o.id}</b><div class="small muted">Slip ${o.slip.ref} · OCR ${o.slip.conf.toFixed(1)}% · ${fmt(o.cur, o.calc.total)}</div></div><span class="sp"></span><button class="btn sm" data-act="a-verify" data-id="${o.id}">Verify</button><button class="btn bad sm" data-act="a-reject" data-id="${o.id}">Reject</button></div>`; }).join('') || '<p class="muted small">No slips waiting. OCR auto-verified everything ≥ 92%.</p>'}
   <h3 style="margin-top:18px">Quality check queue</h3>${S.orders.filter(o => o.stage === 8 && o.status === 'ok').map(o => `<div class="row wrap" style="padding:10px 0;border-bottom:1px solid #F1F5F9"><div><b class="mono">${o.id}</b><div class="small muted">${o.items.map(i => prod(i.p).n + ' ×' + i.q).join(', ')}</div></div><span class="sp"></span><button class="btn sm" data-act="a-qc" data-v="pass" data-id="${o.id}">Pass</button><button class="btn bad sm" data-act="a-qc" data-v="fail" data-id="${o.id}">Fail</button></div>`).join('') || '<p class="muted small">No batches waiting for inspection.</p>'}
@@ -572,12 +581,28 @@ V.lhome = () => {
   <div class="card"><h3>Latest updates</h3>${feed('DELIVERY')}</div></div>`;
 };
 V.aorders = () => {
-  const f = AF, cons = S.orders.filter(o => o.cons && o.status !== 'declined'), owed = cons.filter(o => !o.cons.closed && o.stage >= 14).reduce((a, o) => a + consStatus(o).due, 0), list = S.orders.filter(o => f === 'all' || (f === 'cons' ? !!(o.cons || o.later || o.defer) : f === 'review' ? o.status === 'review' || o.status === 'dispute' : f === 'moving' ? o.stage >= 11 && o.stage < 14 : f === 'done' ? o.stage === 14 : o.stage < 11 && o.status === 'ok'));
-  return `<h1>All orders</h1><div class="pills">${[['all', 'All'], ['pre', 'Pickup preparation'], ['moving', 'Cargo moving'], ['done', 'Delivered'], ['cons', 'Flexible terms'], ['review', 'Needs attention']].map(([k, n]) => `<button class="${f === k ? 'on' : ''}" data-act="aflt" data-v="${k}">${n}</button>`).join('')}</div>
+  const f = AF, af = fsx('aorders'), cons = S.orders.filter(o => o.cons && o.status !== 'declined'), owed = cons.filter(o => !o.cons.closed && o.stage >= 14).reduce((a, o) => a + consStatus(o).due, 0), list = S.orders.filter(o => orderOK(af, o, 'MMK')).filter(o => f === 'all' || (f === 'cons' ? !!(o.cons || o.later || o.defer) : f === 'review' ? o.status === 'review' || o.status === 'dispute' : f === 'moving' ? o.stage >= 11 && o.stage < 14 : f === 'done' ? o.stage === 14 : o.stage < 11 && o.status === 'ok'));
+  return `<h1>All orders</h1>${fbar('aorders', { country: 'order', vendor: true, period: true, cur: 'MMK' })}<div class="pills">${[['all', 'All'], ['pre', 'Pickup preparation'], ['moving', 'Cargo moving'], ['done', 'Delivered'], ['cons', 'Flexible terms'], ['review', 'Needs attention']].map(([k, n]) => `<button class="${f === k ? 'on' : ''}" data-act="aflt" data-v="${k}">${n}</button>`).join('')}</div>
   ${cons.length || S.orders.some(o => o.later || o.defer) ? `<div class="kpis">${kpi('Consignment', cons.length, cons.filter(o => !o.cons.closed).length + ' open')}${kpi('Pay later', S.orders.filter(o => o.later).length, 'orders')}${kpi('Deliver later', S.orders.filter(o => o.defer).length, S.orders.filter(held).length + ' on hold')}${kpi('Receivable now', mmk(owed + S.orders.filter(o => o.later && !o.later.paid && o.stage >= 14).reduce((a, o) => a + o.later.grossMMK, 0)), 'sold / delivered, unpaid')}</div>` : ''}
   <div class="card scroll"><table class="tbl"><thead><tr><th>Order</th><th>Buyer</th><th>Stage</th><th>Slip OCR</th><th class="r">Total</th></tr></thead><tbody>${list.map(o => `<tr><td><a class="mono" href="#/order/${o.id}">${o.id}</a> ${tagChips(o)}</td><td>${esc(o.buyer)}</td><td>${stageChip(o)}</td><td>${o.slip.conf.toFixed(1)}%</td><td class="r num">${fmt(o.cur, o.calc.total)}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">No orders in this view</td></tr>'}</tbody></table></div>`;
 };
 let AF = 'all', ALF = 'all';
+/* ----- Admin: income & supplier breakdown ----- */
+function incomeLines(f) {
+  return S.orders.filter(o => o.stage >= 4 && o.status !== 'declined' && periodOK(f, o.ts) && (f.country === 'all' || oCountry(o) === f.country)).flatMap(o => {
+    const c = o.cons || o.later, plat = o.calc.margin + o.calc.fxbuf + (c ? c.grossMMK - o.calc.totalMMK : 0);
+    return o.items.map(i => { const p = prod(i.p), a = p.unit * i.q, sh = a / o.calc.artisan; return { o, p, v: p.v, cat: p.cat, country: oCountry(o), qty: i.q, artisan: a, platform: plat * sh, landed: o.calc.totalMMK * sh, paid: a * ((o.rel.dep ? .5 : 0) + (o.rel.bal ? .5 : 0)) }; });
+  }).filter(l => catOK(f, l.cat) && (f.vendor === 'all' || l.v === f.vendor) && rangeOK(f, l.landed) && (!f.q || (l.o.id + ' ' + l.p.n).toLowerCase().includes(f.q.toLowerCase())));
+}
+V.aincome = () => {
+  const f = fsx('income'), L = incomeLines(f), sum = (a, k) => a.reduce((t, x) => t + x[k], 0);
+  const grp = (key, label) => { const m = {}; L.forEach(l => { const k = key(l); const g = m[k] || (m[k] = { n: label(l), orders: new Set(), qty: 0, landed: 0, artisan: 0, paid: 0, platform: 0 }); g.orders.add(l.o.id); g.qty += l.qty; g.landed += l.landed; g.artisan += l.artisan; g.paid += l.paid; g.platform += l.platform; }); return Object.values(m).sort((a, b) => b.landed - a.landed); };
+  const tbl = (title, rows, first) => `<div class="card scroll"><h3>${title}</h3><table class="tbl"><thead><tr><th>${first}</th><th class="r">Orders</th><th class="r">Units</th><th class="r">Sales (landed)</th><th class="r">Supplier cost</th><th class="r">Paid out</th><th class="r">Platform income</th></tr></thead><tbody>${rows.map(g => `<tr><td><b>${esc(g.n)}</b></td><td class="r num">${g.orders.size}</td><td class="r num">${g.qty}</td><td class="r num">${mmk(g.landed)}</td><td class="r num">${mmk(g.artisan)}</td><td class="r num">${mmk(g.paid)}</td><td class="r num">${mmk(g.platform)}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">No data for these filters</td></tr>'}</tbody></table></div>`;
+  return `<a href="#/a/overview" class="small">← Overview</a><div class="title-row"><h1>Income &amp; suppliers</h1></div><p class="muted">Funded orders only. Platform income = margin + FX buffer + consignment / pay-later fees. Amounts in MMK.</p>
+  ${fbar('income', { country: 'order', vendor: true, period: true, cur: 'MMK' })}
+  <div class="kpis">${kpi('Sales (landed)', mmk(sum(L, 'landed')), new Set(L.map(l => l.o.id)).size + ' orders')}${kpi('Platform income', mmk(sum(L, 'platform')), 'margin + fees')}${kpi('Paid to suppliers', mmk(sum(L, 'paid')), 'released from escrow')}${kpi('Still to release', mmk(sum(L, 'artisan') - sum(L, 'paid')), 'held for suppliers')}</div>
+  <div class="grid" style="grid-template-columns:1fr">${tbl('By supplier', grp(l => l.v, l => vendorOf(l.v).n), 'Supplier')}${tbl('By category', grp(l => l.cat, l => l.cat), 'Category')}${tbl('By destination country', grp(l => l.country, l => l.country), 'Country')}</div>`;
+};
 const unreadN = () => (S.alerts || []).filter(a => !a.read).length;
 const alertRow = a => { const [l, c, tc] = AL_GRP[a.group]; return `<a class="card hv" href="${a.href}" data-act="al-open" data-id="${a.id}" style="display:block;text-decoration:none;color:inherit;border-left:5px solid ${c};padding:12px 14px;${a.read ? 'opacity:.75' : ''}"><div class="row wrap"><span class="chip" style="background:${c}1f;color:${tc}"><i class="gdot" style="background:${c}"></i>${l}</span>${a.hot ? '<span class="chip bad">Needs attention</span>' : ''}${a.read ? '' : '<span class="chip ai">New</span>'}<span class="sp"></span><span class="small muted">${ago(a.ts)}</span></div><div style="margin-top:6px"><b>${esc(a.title)}</b></div><div class="small muted">${esc(a.msg)}</div></a>`; };
 V.aalerts = () => {
@@ -638,9 +663,56 @@ function simulate(k) {
   save();
 }
 
+/* ---------- Filters (orders, listings, income) ---------- */
+const FS = {};
+const fs0 = () => ({ type: 'all', cat: 'all', country: 'all', vendor: 'all', min: '', max: '', q: '', period: 'all', status: 'all' });
+const fsx = k => FS[k] || (FS[k] = fs0());
+const fcur = () => S.role === 'BUYER' ? S.cur : 'MMK';
+const oCountry = o => COUNTRY[CUR[o.cur].c];
+const catOK = (f, cat) => (f.type === 'all' || (f.type === 'food') === FOOD.includes(cat)) && (f.cat === 'all' || f.cat === cat);
+const rangeOK = (f, v) => (f.min === '' || v >= +f.min) && (f.max === '' || v <= +f.max);
+const periodOK = (f, ts) => f.period === 'all' || ts >= Date.now() - (+f.period) * 24 * H;
+const nActive = (f, keys) => keys.filter(k => f[k] !== '' && f[k] !== 'all').length;
+function orderOK(f, o, cur) {
+  const ps = o.items.map(i => prod(i.p)).filter(Boolean);
+  if (!ps.some(p => catOK(f, p.cat))) return false;
+  if (f.vendor !== 'all' && !ps.some(p => p.v === f.vendor)) return false;
+  if (f.country !== 'all' && oCountry(o) !== f.country) return false;
+  if (!rangeOK(f, cur === 'MMK' ? o.calc.totalMMK : toCur(o.calc.totalMMK, cur))) return false;
+  if (!periodOK(f, o.ts)) return false;
+  return !f.q || (o.id + ' ' + ps.map(p => p.n).join(' ')).toLowerCase().includes(f.q.toLowerCase());
+}
+/* opts: cat (category select), country ('order' | 'origin' | false), vendor (admin only), search, period, status */
+function fbar(key, o = {}) {
+  const f = fsx(key), cur = o.cur || fcur(), sel = (ff, l, opts) => `<label class="ff"><span>${l}</span><select class="sel sm" data-fk="${key}" data-ff="${ff}">${opts.map(([v, n]) => `<option value="${esc(v)}" ${String(f[ff]) === String(v) ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>`;
+  const types = [['all', 'All products'], ['food', 'Food & drink'], ['other', 'Crafts & other']], cats = [['all', 'All categories'], ...CATS.filter(c => catOK({ ...f, cat: 'all' }, c)).map(c => [c, c])];
+  const keys = ['type', 'cat', 'country', 'vendor', 'min', 'max', 'q', 'period', 'status'], n = nActive(f, keys);
+  return `<details class="card fbar" ${n || o.open ? 'open' : ''}><summary><b>Filters</b> ${n ? `<span class="chip ai">${n} active</span>` : ''}</summary><div class="fgrid">
+  ${o.search !== false ? `<label class="ff wide"><span>Search</span><input class="inp sm" data-fk="${key}" data-ff="q" value="${esc(f.q)}" placeholder="Order ID or product" aria-label="Search"></label>` : ''}
+  ${sel('type', 'Product type', types)}${o.cat !== false ? sel('cat', 'Category', cats) : ''}
+  ${o.country ? sel('country', o.country === 'origin' ? 'Country of origin' : 'Destination country', [['all', 'All countries'], ...(o.country === 'origin' ? ORIGINS : Object.values(COUNTRY)).map(c => [c, c])]) : ''}
+  ${o.vendor && S.role === 'ADMIN' ? sel('vendor', 'Supplier', [['all', 'All suppliers'], ...VENDORS.map(v => [v.id, v.n])]) : ''}
+  ${o.period ? sel('period', 'Period', [['all', 'All time'], ['7', 'Last 7 days'], ['30', 'Last 30 days'], ['90', 'Last 90 days']]) : ''}
+  ${o.status ? sel('status', 'Status', [['all', 'All'], ['live', 'Live'], ['off', 'Not live']]) : ''}
+  <label class="ff"><span>Min cost (${cur})</span><input class="inp sm" type="number" min="0" inputmode="decimal" data-fk="${key}" data-ff="min" value="${esc(f.min)}" aria-label="Minimum cost"></label>
+  <label class="ff"><span>Max cost (${cur})</span><input class="inp sm" type="number" min="0" inputmode="decimal" data-fk="${key}" data-ff="max" value="${esc(f.max)}" aria-label="Maximum cost"></label>
+  <div class="ff"><span>&nbsp;</span><button class="btn sec sm" data-act="f-reset" data-fk="${key}" ${n ? '' : 'disabled'}>Reset filters</button></div></div></details>`;
+}
+document.addEventListener('change', e => {
+  const k = e.target.dataset && e.target.dataset.fk; if (!k) return;
+  const f = fsx(k); f[e.target.dataset.ff] = e.target.value;
+  if (e.target.dataset.ff === 'type' && f.cat !== 'all' && !catOK({ ...f, cat: 'all' }, f.cat)) f.cat = 'all';
+  rerender();
+});
+let _fdeb; document.addEventListener('input', e => {
+  if (!(e.target.dataset && e.target.dataset.fk && e.target.dataset.ff === 'q')) return;
+  const k = e.target.dataset.fk; fsx(k).q = e.target.value; clearTimeout(_fdeb);
+  _fdeb = setTimeout(() => { rerender(); const x = document.querySelector(`[data-fk="${k}"][data-ff="q"]`); if (x) { x.focus(); x.setSelectionRange(x.value.length, x.value.length); } }, 350);
+});
+
 /* ---------- Product management (supplier + admin) ---------- */
 V.products = admin => {
-  const list = mineP(admin ? '' : MYV), live = list.filter(p => p.live).length, base = admin ? '#/a/products' : '#/s/products';
+  const pf = fsx('products' + (admin ? 'A' : 'S')), all = mineP(admin ? '' : MYV), list = all.filter(p => catOK(pf, p.cat) && (pf.country === 'all' || (p.country || 'Myanmar') === pf.country) && (pf.vendor === 'all' || p.v === pf.vendor) && rangeOK(pf, p.unit) && (pf.status === 'all' || (pf.status === 'live') === !!p.live) && (!pf.q || (p.n + ' ' + (p.mm || '') + ' ' + p.from).toLowerCase().includes(pf.q.toLowerCase()))), live = list.filter(p => p.live).length, base = admin ? '#/a/products' : '#/s/products';
   const card = p => `<div class="card"><div style="height:130px;border-radius:12px;overflow:hidden;margin-bottom:10px;background:#eef2f7">${art(p)}</div>
    <div class="row wrap"><b>${esc(p.n)}</b><span class="sp"></span><span class="chip ${p.live ? '' : 'gray'}">${p.live ? 'Live' : 'Not live'}</span></div>
    <div class="small muted">${esc(p.mm || '')}</div><div class="small muted">${esc(VENDORS.find(v => v.id === p.v)?.n || p.v)} · ${esc(p.cat)} · ${esc(p.from)}</div>
@@ -648,8 +720,8 @@ V.products = admin => {
    <div class="row wrap"><button class="switch ${p.live ? 'on' : ''}" data-act="p-live" data-id="${p.id}" role="switch" aria-checked="${p.live}" aria-label="Live in catalog"></button><span class="small">${p.live ? 'Visible to buyers' : 'Hidden from buyers'}</span><span class="sp"></span><button class="btn sec sm" data-act="p-edit" data-id="${p.id}">Edit</button><button class="btn bad sm" data-act="p-del" data-id="${p.id}">Delete</button></div></div>`;
   return `<a href="${admin ? '#/a/overview' : '#/s/stock'}" class="small">← ${admin ? 'Overview' : 'Stock'}</a><div class="title-row"><h1>Products</h1><span class="sp"></span><button class="btn" data-act="p-edit" data-id="">+ Add product</button></div>
   <p class="muted">${admin ? 'All suppliers’ batches. Switch a product off to hide it from buyers without deleting it.' : 'Your batches for ' + esc(vname()) + '. Switch a product off to hide it from buyers without deleting it.'}</p>
-  <div class="kpis">${kpi('Products', list.length, 'in total')}${kpi('Live', live, 'visible to buyers')}${kpi('Not live', list.length - live, 'hidden')}</div>
-  <div class="grid g2">${list.map(card).join('') || '<div class="empty card">No products yet. Tap “Add product”.</div>'}</div>`;
+  ${fbar('products' + (admin ? 'A' : 'S'), { country: 'origin', vendor: true, status: true, cur: 'MMK' })}<div class="kpis">${kpi('Products', list.length, list.length === all.length ? 'in total' : 'of ' + all.length + ' match')}${kpi('Live', live, 'visible to buyers')}${kpi('Not live', list.length - live, 'hidden')}</div>
+  <div class="grid g2">${list.map(card).join('') || '<div class="empty card">No products match. Adjust the filters or tap “Add product”.</div>'}</div>`;
 };
 V.sproducts = () => V.products(false);
 V.aproducts = () => V.products(true);
@@ -668,6 +740,7 @@ function prodForm(id) {
   ${admin ? `<label class="f" for="pf-v">Supplier</label><select class="sel" id="pf-v">${VENDORS.map(v => `<option value="${v.id}" ${p.v === v.id ? 'selected' : ''}>${esc(v.n)}</option>`).join('')}</select>` : ''}
   <label class="f" for="pf-wh">Pickup warehouse</label><select class="sel" id="pf-wh">${whOpts(p.v, p.wh)}</select><div class="small muted">Where the 3PL collects this batch. <a href="${admin ? '#/a/supplier/' + p.v : '#/s/profile'}" data-act="close">Manage warehouses</a></div>
   ${inp('from', 'Origin (town / region)', 'text', 'maxlength="60"')}
+  <label class="f" for="pf-country">Country of origin</label><select class="sel" id="pf-country">${ORIGINS.map(c => `<option ${(p.country || 'Myanmar') === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
   <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px"><div>${inp('unit', 'Unit price (MMK)', 'number', 'min="1" step="100" inputmode="numeric"')}</div><div>${inp('kg', 'Weight per unit (kg)', 'number', 'min="0.01" step="0.01" inputmode="decimal"')}</div><div>${inp('moq', 'Minimum order (MOQ)', 'number', 'min="1" step="1"')}</div><div>${inp('quota', 'Batch quota (units)', 'number', 'min="1" step="1"')}</div></div>
   ${inp('cut', 'Dispatch cutoff (hours from now)', 'number', 'min="1" step="1"')}${inp('tag', 'Badge text', 'text', 'maxlength="30"')}
   <label class="f" for="pf-note">Description</label><textarea class="inp" id="pf-note" rows="3" maxlength="200" style="height:auto">${esc(p.note || '')}</textarea>
@@ -688,7 +761,7 @@ function saveProduct(id) {
   if (!(moq >= 1)) return toast('MOQ must be at least 1'); if (!(quota >= moq)) return toast('Batch quota must be at least the MOQ');
   if (ex && quota < ex.res) return toast('Quota cannot be below ' + ex.res + ' units already reserved'); if (!(cut >= 1)) return toast('Enter the cutoff in hours');
   if (!g('wh').value) return toast('Add an active warehouse first');
-  const d = { wh: g('wh').value, n, mm: g('mm').value.trim(), cat: g('cat').value, from: g('from').value.trim(), unit, kg, moq, quota, cut, tag: g('tag').value.trim() || 'New', note: g('note').value.trim() || '—', live: g('live').checked, v: admin ? g('v').value : (ex ? ex.v : MYV) };
+  const d = { country: g('country').value, wh: g('wh').value, n, mm: g('mm').value.trim(), cat: g('cat').value, from: g('from').value.trim(), unit, kg, moq, quota, cut, tag: g('tag').value.trim() || 'New', note: g('note').value.trim() || '—', live: g('live').checked, v: admin ? g('v').value : (ex ? ex.v : MYV) };
   let p = ex;
   if (ex) Object.assign(ex, d); else { p = { id: 'P' + (Math.max(0, ...PRODUCTS.map(x => +x.id.slice(1) || 0)) + 1), res: 0, ...d }; PRODUCTS.push(p); }
   if (window._pimg) p.img = window._pimg; else if (window._pimg === null) delete p.img;
@@ -748,7 +821,7 @@ function saveWh(vid, wid) {
 /* ---------- Burmese page titles ---------- */
 const PAGE_MM = {
   catalog: ['ကတ်တလောက်', 'အင်းလေးပိုးနှင့် ပုဂံယွန်းထည်'], cart: ['ကြိုတင်မှာယူမှု'], orders: ['အော်ဒါများ'], cargo: ['ကုန်စည်ခြေရာခံခြင်း'], lab: ['အသုံးပြုသူ စမ်းသပ်မှုနှင့် အခန်းကဏ္ဍ ပုံစံတူ'],
-  'a/alerts': ['သတိပေးချက်များ'], 's/profile': ['လုပ်ငန်းနှင့် ကုန်လှောင်ရုံများ'], 'a/supplier': ['လုပ်ငန်းနှင့် ကုန်လှောင်ရုံများ'], 's/products': ['ကုန်ပစ္စည်းများ'], 'a/products': ['ကုန်ပစ္စည်းများ'], 'a/options': ['မှာယူမှု ရွေးချယ်စရာများ'],
+  'a/alerts': ['သတိပေးချက်များ'], 'a/income': ['ဝင်ငွေနှင့် ကုန်သည်များ'], 's/profile': ['လုပ်ငန်းနှင့် ကုန်လှောင်ရုံများ'], 'a/supplier': ['လုပ်ငန်းနှင့် ကုန်လှောင်ရုံများ'], 's/products': ['ကုန်ပစ္စည်းများ'], 'a/products': ['ကုန်ပစ္စည်းများ'], 'a/options': ['မှာယူမှု ရွေးချယ်စရာများ'],
   's/orders': ['အော်ဒါများ'], 's/stock': ['စတော့'], 's/payouts': ['ငွေထုတ်ယူမှု'],
   'l/manifest': ['ကုန်စည် မန်နီဖက်စ်'], 'l/transit': ['ပို့ဆောင်ဆဲ'], 'l/pod': ['ပို့ဆောင်ပြီးကြောင်း အထောက်အထား'],
   'a/overview': ['လုပ်ငန်းလည်ပတ်မှု အနှစ်ချုပ်'], 'a/fx': ['ငွေလွှဲနှုန်းနှင့် အမြတ်ခွန်အင်ဂျင်'], 'a/vendors': ['ကုန်သည် စိစစ်ခြင်းနှင့် KYC'], 'a/escrow': ['အာမခံငွေနှင့် စာရင်းဇယား'], 'a/roles': ['အခန်းကဏ္ဍအလိုက် ခွင့်ပြုချက်'],
@@ -780,7 +853,7 @@ const MM = {
   'All batches': 'အားလုံး', 'All': 'အားလုံး', 'Textiles': 'ပိုးထည်အထည်', 'Lacquerware': 'ယွန်းထည်', 'Tea & Coffee': 'လက်ဖက်နှင့် ကော်ဖီ', 'Gems & Jewelry': 'ကျောက်မျက်နှင့် လက်ဝတ်ရတနာ', 'Wellness': 'ကျန်းမာရေး',
   'Consignment': 'အပ်နှံရောင်းချမှု', 'Consignment terms': 'အပ်နှံစည်းမျဉ်းများ', 'Order type': 'မှာယူမှုပုံစံ', 'Report sales': 'ရောင်းရမှု ပို့ရန်', 'Settle now': 'ယခု ပေးချေမည်', 'Extend +30 days': 'ရက် ၃၀ တိုးမည်', 'Buy out remainder': 'ကျန်ပစ္စည်း ဝယ်မည်', 'Return unsold': 'မရောင်းရသည် ပြန်ပို့', 'Send settlement reminder': 'ပေးချေရန် သတိပေးမည်', 'Report & settle': 'ပို့၍ ပေးချေမည်',
   'Order options': 'မှာယူမှု ရွေးချယ်စရာများ', 'Pay later': 'နောက်မှ ပေးချေမည်', 'Deliver later': 'နောက်မှ ပို့ဆောင်မည်', 'Payment': 'ငွေပေးချေမှု', 'Delivery': 'ပို့ဆောင်မှု', 'Flexible terms': 'ပြောင်းလွယ်စည်းမျဉ်း', 'Pay later terms': 'နောက်မှပေးချေမှု စည်းမျဉ်း', 'Pay now': 'ယခု ပေးမည်', 'Release hold now': 'ယခု ထုတ်ပို့ရန် ဖွင့်မည်', 'Save fees': 'ကြေးများ သိမ်းမည်', 'Reset to defaults': 'မူလအတိုင်း ပြန်ထားမည်',
-  'Send for quality check': 'အရည်အသွေးစစ်ရန် ပို့မည်', 'Pass quality check': 'အရည်အသွေး အောင်မြင်', 'Quality check queue': 'အရည်အသွေးစစ်ဆေးရန် စာရင်း', 'Pass': 'အောင်', 'Fail': 'ကျ', 'Business & warehouses': 'လုပ်ငန်းနှင့် ကုန်လှောင်ရုံများ', 'Warehouses': 'ကုန်လှောင်ရုံများ', 'Supplier details': 'ကုန်သည် အချက်အလက်', 'Edit details': 'အချက်အလက် ပြင်မည်', '+ Add warehouse': '+ ကုန်လှောင်ရုံ ထည့်ရန်', 'Add warehouse': 'ကုန်လှောင်ရုံ ထည့်ရန်', 'Edit warehouse': 'ကုန်လှောင်ရုံ ပြင်ရန်', 'Save details': 'အချက်အလက် သိမ်းမည်', 'Save warehouse': 'ကုန်လှောင်ရုံ သိမ်းမည်', 'Delete warehouse?': 'ကုန်လှောင်ရုံ ဖျက်မလား?', 'Profile & warehouses': 'ပရိုဖိုင်နှင့် ကုန်လှောင်ရုံ', 'Manage products': 'ကုန်ပစ္စည်း စီမံရန်', 'Alerts': 'သတိပေးချက်များ', 'Edit terms': 'စည်းမျဉ်း ပြင်ရန်', 'Consignment': 'အပ်နှံရောင်းချမှု', 'Latest alerts': 'နောက်ဆုံး သတိပေးချက်များ', 'Mark all read': 'အားလုံး ဖတ်ပြီးပြု', 'Clear read': 'ဖတ်ပြီးသည်များ ဖယ်ရန်', 'View all →': 'အားလုံးကြည့်ရန် →', 'Next →': 'ရှေ့ဆက်မည် →', 'Next': 'ရှေ့ဆက်မည်', '+ Add product': '+ ကုန်ပစ္စည်း ထည့်ရန်', 'Add product': 'ကုန်ပစ္စည်း ထည့်ရန်', 'Edit product': 'ကုန်ပစ္စည်း ပြင်ရန်', 'Edit': 'ပြင်မည်', 'Delete': 'ဖျက်မည်', 'Save changes': 'ပြောင်းလဲမှု သိမ်းမည်', 'Delete product?': 'ကုန်ပစ္စည်း ဖျက်မလား?', 'Remove photo': 'ဓာတ်ပုံ ဖယ်ရှားမည်', 'Products': 'ကုန်ပစ္စည်းများ', 'Pickup preparation':'ပစ္စည်းလာယူရန် ပြင်ဆင်မှု', 'Cargo moving': 'ကုန်စည် သွားနေ', 'Needs attention': 'စစ်ဆေးရန်လို',
+  'Send for quality check': 'အရည်အသွေးစစ်ရန် ပို့မည်', 'Pass quality check': 'အရည်အသွေး အောင်မြင်', 'Quality check queue': 'အရည်အသွေးစစ်ဆေးရန် စာရင်း', 'Pass': 'အောင်', 'Fail': 'ကျ', 'Business & warehouses': 'လုပ်ငန်းနှင့် ကုန်လှောင်ရုံများ', 'Warehouses': 'ကုန်လှောင်ရုံများ', 'Supplier details': 'ကုန်သည် အချက်အလက်', 'Edit details': 'အချက်အလက် ပြင်မည်', '+ Add warehouse': '+ ကုန်လှောင်ရုံ ထည့်ရန်', 'Add warehouse': 'ကုန်လှောင်ရုံ ထည့်ရန်', 'Edit warehouse': 'ကုန်လှောင်ရုံ ပြင်ရန်', 'Save details': 'အချက်အလက် သိမ်းမည်', 'Save warehouse': 'ကုန်လှောင်ရုံ သိမ်းမည်', 'Delete warehouse?': 'ကုန်လှောင်ရုံ ဖျက်မလား?', 'Profile & warehouses': 'ပရိုဖိုင်နှင့် ကုန်လှောင်ရုံ', 'Manage products': 'ကုန်ပစ္စည်း စီမံရန်', 'Alerts': 'သတိပေးချက်များ', 'Filters': 'စစ်ထုတ်ရန်', 'Reset filters': 'စစ်ထုတ်မှု ပြန်ဖျက်', 'Income': 'ဝင်ငွေ', 'By supplier': 'ကုန်သည်အလိုက်', 'By category': 'အမျိုးအစားအလိုက်', 'By destination country': 'နိုင်ငံအလိုက်', 'Edit terms': 'စည်းမျဉ်း ပြင်ရန်', 'Consignment': 'အပ်နှံရောင်းချမှု', 'Latest alerts': 'နောက်ဆုံး သတိပေးချက်များ', 'Mark all read': 'အားလုံး ဖတ်ပြီးပြု', 'Clear read': 'ဖတ်ပြီးသည်များ ဖယ်ရန်', 'View all →': 'အားလုံးကြည့်ရန် →', 'Next →': 'ရှေ့ဆက်မည် →', 'Next': 'ရှေ့ဆက်မည်', '+ Add product': '+ ကုန်ပစ္စည်း ထည့်ရန်', 'Add product': 'ကုန်ပစ္စည်း ထည့်ရန်', 'Edit product': 'ကုန်ပစ္စည်း ပြင်ရန်', 'Edit': 'ပြင်မည်', 'Delete': 'ဖျက်မည်', 'Save changes': 'ပြောင်းလဲမှု သိမ်းမည်', 'Delete product?': 'ကုန်ပစ္စည်း ဖျက်မလား?', 'Remove photo': 'ဓာတ်ပုံ ဖယ်ရှားမည်', 'Products': 'ကုန်ပစ္စည်းများ', 'Pickup preparation':'ပစ္စည်းလာယူရန် ပြင်ဆင်မှု', 'Cargo moving': 'ကုန်စည် သွားနေ', 'Needs attention': 'စစ်ဆေးရန်လို',
   'Home': 'ပင်မ', 'Catalog': 'ကတ်တလောက်', 'Orders': 'အော်ဒါများ', 'Cargo': 'ကုန်စည်', 'Account': 'အကောင့်', 'Stock': 'စတော့', 'Payouts': 'ငွေထုတ်', 'Manifest': 'မန်နီဖက်စ်', 'POD': 'POD', 'Overview': 'အနှစ်ချုပ်', 'FX Engine': 'FX', 'Vendors': 'ကုန်သည်များ', 'Escrow': 'အာမခံငွေ', 'Test Lab': 'စမ်းသပ်ခန်း',
   /* section titles */
   'Landed cost': 'ရောက်ရှိကုန်ကျစရိတ်', 'Items': 'ကုန်ပစ္စည်းများ', 'Payment slip': 'ငွေပေးချေ ဘောင်ချာ', 'Order journey · 14 stages': 'အော်ဒါ ခရီးစဉ် · အဆင့် ၁၄', 'Weight intake & consolidation': 'အလေးချိန် မှတ်သားခြင်းနှင့် ပေါင်းစည်းခြင်း',
@@ -823,7 +896,7 @@ function route() {
   const map = { home: V.bhome, account: V.account, invoices: V.invoices, login: V.login, catalog: V.catalog, product: () => V.product(b), cart: V.cart, orders: V.orders, order: () => V.order(b), cargo: V.cargo, lab: V.lab };
   if (a === 's') html = { home: V.shome, orders: V.sorders, stock: V.sstock, payouts: V.spayouts, products: V.sproducts, profile: V.sprofile }[b]?.();
   else if (a === 'l') html = { home: V.lhome, manifest: V.manifest, transit: V.transit, pod: V.podlist }[b]?.();
-  else if (a === 'a') html = { overview: V.aoverview, orders: V.aorders, fx: V.afx, vendors: V.avendors, escrow: V.aescrow, roles: V.aroles, options: V.aoptions, products: V.aproducts, alerts: V.aalerts, supplier: () => V.profile(c, true) }[b]?.();
+  else if (a === 'a') html = { overview: V.aoverview, orders: V.aorders, fx: V.afx, vendors: V.avendors, escrow: V.aescrow, roles: V.aroles, options: V.aoptions, products: V.aproducts, income: V.aincome, alerts: V.aalerts, supplier: () => V.profile(c, true) }[b]?.();
   else html = map[a]?.();
   const bo = ['home', 'catalog', 'product', 'cart', 'orders', 'cargo', 'invoices'];
   if (S.role && ((a === 's' && S.role !== 'SUPPLIER') || (a === 'l' && S.role !== 'DELIVERY') || (a === 'a' && S.role !== 'ADMIN') || (bo.includes(a) && S.role !== 'BUYER'))) { location.hash = ROLES[S.role].home; return; }
@@ -877,6 +950,7 @@ document.addEventListener('click', e => {
     case 'al-flt': ALF = v; rerender(); break;
     case 'vc-on': { const vd = vendorOf(id), cs = vd.cons; cs.on = !cs.on; cs.by = S.role === 'ADMIN' ? 'admin' : 'supplier'; editLog(`Consignment switched ${cs.on ? 'ON' : 'OFF'} · ${vd.n}`); save(); toast(cs.on ? 'Consignment on' : 'Consignment off'); rerender(); break; }
     case 'vc-set': { const vd = vendorOf(id), k = el.dataset.k; vd.cons[k] = (k === 'dep' || k === 'term') ? +v : v; vd.cons.by = S.role === 'ADMIN' ? 'admin' : 'supplier'; editLog(`Consignment terms updated · ${vd.n} (${k}: ${v})`); save(); rerender(); break; }
+    case 'f-reset': FS[el.dataset.fk] = fs0(); rerender(); break;
     case 'v-edit': vendorForm(id); break;
     case 'v-save': saveVendor(id); break;
     case 'w-edit': whForm(id, el.dataset.w); break;

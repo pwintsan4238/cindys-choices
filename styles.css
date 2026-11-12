@@ -235,3 +235,15 @@ img,svg{max-width:100%}
 .bell .ic{width:22px;height:22px}
 .bell b{position:absolute;top:2px;right:0;min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:#dc2626;color:#fff;font:700 11px/18px var(--f-ui);text-align:center}
 .pills button b{display:inline-block;min-width:18px;padding:0 5px;border-radius:99px;background:#dc2626;color:#fff;font-size:11px;line-height:18px;margin-left:4px}
+
+/* filters */
+.fbar{padding:10px 14px;margin:10px 0}
+.fbar summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
+.fbar summary::-webkit-details-marker{display:none}
+.fbar summary::after{content:"▾";margin-left:auto;color:#64748b}
+.fbar[open] summary::after{content:"▴"}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:10px}
+.ff{display:flex;flex-direction:column;gap:4px;min-width:0}
+.ff.wide{grid-column:1/-1}
+.ff>span{font:600 11px var(--f-ui);color:#64748b;text-transform:uppercase;letter-spacing:.04em}
+.ff .sel,.ff .inp{width:100%;min-width:0}
